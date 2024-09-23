@@ -3,10 +3,88 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Webcam Stream</title>
+    <title>Gaze-Based Remote User Interface</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        header {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px;
+            background-color: #f0f0f0;
+        }
+        .content {
+            display: flex;
+            flex: 1;
+        }
+        .sidebar {
+            width: 200px;
+            padding: 10px;
+            background-color: #e0e0e0;
+        }
+        .main-content {
+            flex: 1;
+            padding: 10px;
+        }
+        #video-container {
+            width: 100%;
+            height: 480px;
+            background-color: #ccc;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        form {
+            margin-bottom: 10px;
+        }
+    </style>
 </head>
 <body>
-    <h1>Webcam Stream</h1>
-    <img src="{{ url_for('video_feed') }}" width="640" height="480">
+    <header>
+        <form method="post">
+            <select name="display_option" onchange="this.form.submit()">
+                {% for option in display_options %}
+                    <option value="{{ option }}" {% if option == current_display %}selected{% endif %}>{{ option }}</option>
+                {% endfor %}
+            </select>
+        </form>
+    </header>
+    <div class="content">
+        <div class="sidebar">
+            <div id="robot-connection">
+                <h3>Robot Connection Info</h3>
+                <p>Status: {{ robot_status }}</p>
+                <form method="post">
+                    {% if robot_status == "Disconnected" %}
+                        <button type="submit" name="connect_robot">Connect Robot</button>
+                    {% else %}
+                        <button type="submit" name="disconnect_robot">Disconnect Robot</button>
+                    {% endif %}
+                </form>
+            </div>
+            <div id="mission-status">
+                <h3>Mission Status Info</h3>
+                <p>{{ mission_status }}</p>
+                <form method="post">
+                    {% if mission_status == "No active mission" %}
+                        <button type="submit" name="start_mission">Start Mission</button>
+                    {% else %}
+                        <button type="submit" name="end_mission">End Mission</button>
+                    {% endif %}
+                </form>
+            </div>
+        </div>
+        <div class="main-content">
+            <div id="video-container">
+                <img src="{{ url_for('video_feed') }}" alt="Video stream">
+            </div>
+        </div>
+    </div>
 </body>
 </html>
