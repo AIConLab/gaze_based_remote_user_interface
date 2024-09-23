@@ -1,6 +1,17 @@
-version: '3'
 services:
-  pupil_core:
+  web_app:
+    build: ./web_app
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=development
+    devices:
+      - /dev/video0:/dev/video0
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix
+    command: python3 main.py
+
+  gaze_module:
     build:
       context: ./pupil_docker
       dockerfile: Dockerfile
