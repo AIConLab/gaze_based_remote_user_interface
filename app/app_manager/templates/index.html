@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Distributed System Interface</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <div class="menu-icon">☰</div>
+        <div class="header-controls">
+            <select id="video-topics">
+                <option value="">Video topics</option>
+            </select>
+            <button id="gaze-toggle">Enable Gaze</button>
+        </div>
+    </header>
+    
+    <div class="content">
+        <aside class="sidebar">
+            <div id="robot-connection">
+                <h3>Robot connection status</h3>
+                <!-- Add status information here -->
+            </div>
+            <div id="mission-control">
+                <button id="mission-start">Mission Start</button>
+                <button id="mission-stop">Mission Stop</button>
+            </div>
+            <div id="mission-files">
+                <h3>Mission files</h3>
+                <div class="file-area">
+                    <!-- Add mission files or waypoint images here -->
+                </div>
+            </div>
+        </aside>
+        
+        <main class="main-content">
+            <div id="workspace">
+                <!-- Add video stream, gaze interaction, text editor, etc. here -->
+                <p>Video stream, gaze interaction, text editor, glasses worldview, confirmation screens, view map and map info like waypoint location</p>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  app_manager:
+    build:
+      context: .
+      dockerfile: Dockerfile.web_host_python3_8
+    volumes:
+      - ../app/app_manager:/app
+    environment:
+      - DISPLAY=${DISPLAY}
+    ports:
+      - "5000:5000"
+    networks:
+      - app_network
+    command: "python3 main.py"
+
+  video_manager:
+    build:
+      context: .
+      dockerfile: Dockerfile.ml_cv_python3_8
+    volumes:
+      - ../app/video_manager:/app
+    environment:
+      - DISPLAY=${DISPLAY}
+    networks:
+      - app_network
+    command: "python3 main.py"
+
+networks:
+  app_network:
+    driver: bridge
+

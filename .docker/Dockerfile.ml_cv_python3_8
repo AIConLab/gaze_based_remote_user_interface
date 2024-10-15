@@ -1,0 +1,44 @@
+FROM python:3.8-slim-buster
+
+RUN apt-get update && apt-get install -y \
+    libgl1-mesa-glx \
+    git \
+    python3 \
+    python3-pip \
+    libusb-1.0-0 \
+    libportaudio2 \
+    libgl1-mesa-glx \
+    libgl1-mesa-dri \
+    libglib2.0-0 \
+    libglfw3 \
+    libglew2.1 \
+    libsm6 \
+    libxext6 \
+    libxrender1 \
+    libxcomposite1 \
+    x11-apps \
+    mesa-utils \
+    libopengl0 \
+    libglx-mesa0 \
+    libglu1-mesa \
+    xvfb \
+    xauth \
+    libcairo2-dev \
+    libgirepository1.0-dev \
+    pkg-config \
+    python3-dev \
+    gir1.2-gtk-3.0 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Create plugdev group and user
+RUN groupadd -f -r plugdev && useradd -m -r -g plugdev opencvuser
+
+COPY pip_requirements/ml_cv_python3_8.txt requirements.txt
+
+RUN pip install --no-cache-dir -r requirements.txt
+
+ENV LIBGL_ALWAYS_INDIRECT=0
+
+CMD ["python", "main.py"]

@@ -1,9 +1,15 @@
 # gaze_based_remote_user_interface
+
 Application used for demoing gaze based robot control interface
 
-## Installation
+
+## Setup App Images
+
+1. `cd .docker`
+2. `docker compose build`
 
 ## Usage
 
-`xhost +local:root`
-`docker-compose up`
+1. `cd .docker`
+2. `docker compose up`
+
