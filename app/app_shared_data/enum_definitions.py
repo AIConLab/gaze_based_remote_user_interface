@@ -1,0 +1,25 @@
+from enum import Enum, unique
+
+@unique
+class MissionStates(Enum):
+    IDLE = 0
+    LOADING_WAYPOINTS = 1
+    MISSION_COMPLETED = 2
+    NAVIGATING_TO_WAYPOINT = 3
+    WAYPOINT_REACHED = 4
+    SCANNING_SCENE = 5
+    SCANNED_SCENE = 6
+    APPROACHING_TARGET = 7
+    AWAITING_HUMAN_ASSISTANCE = 8
+    INSPECTING_TARGET = 9
+    INSPECTION_COMPLETED = 10
+    PAUSED = 11
+    ABORTED = 12
+
+
+@unique
+class MissionCommandSignals(Enum):
+    MISSION_START = 0
+    MISSION_PAUSE = 1
+    MISSION_ABORT = 2
+    MISSION_RESUME = 3

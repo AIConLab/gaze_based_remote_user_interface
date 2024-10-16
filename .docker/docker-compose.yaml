@@ -6,7 +6,7 @@ services:
       context: .
       dockerfile: Dockerfile.web_host_python3_8
     volumes:
-      - ../app/app_manager:/app
+      - ../app/web_host:/app
     environment:
       - DISPLAY=${DISPLAY}
     ports:
