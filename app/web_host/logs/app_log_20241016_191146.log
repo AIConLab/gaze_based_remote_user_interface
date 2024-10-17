@@ -1,0 +1,104 @@
+2024-10-16 19:11:46,709 - __main__ - INFO - Application starting
+2024-10-16 19:11:46,711 - __main__ - INFO - Backend started
+2024-10-16 19:11:46,711 - __main__ - INFO - Frontend started
+2024-10-16 19:11:46,917 - __main__ - INFO - Published message on topic: Backend/latest_frame_from_selected_topic
+2024-10-16 19:11:46,917 - __main__ - INFO - Subscribed to topic: Frontend/gaze_enabled_button_pressed
+2024-10-16 19:11:46,917 - __main__ - INFO - Subscribed to topic: Frontend/mission_start_button_pressed
+2024-10-16 19:11:46,917 - __main__ - INFO - Subscribed to topic: Frontend/mission_pause_button_pressed
+2024-10-16 19:11:46,918 - __main__ - INFO - Subscribed to topic: Frontend/mission_stop_button_pressed
+2024-10-16 19:11:46,918 - __main__ - INFO - Subscribed to topic: Frontend/video_topic_selected
+2024-10-16 19:11:46,919 - __main__ - INFO - Subscribed to topic: VideoManager/latest_frame_of_selected_topic
+2024-10-16 19:11:46,919 - __main__ - INFO - Subscribed to topic: VideoManager/available_video_topics
+2024-10-16 19:11:46,919 - __main__ - INFO - Subscribed to topic: MissionManager/mission_state_update
+2024-10-16 19:11:46,919 - __main__ - INFO - Subscribed to topic: Backend/mission_state_update
+2024-10-16 19:11:46,920 - __main__ - INFO - Subscribed to topic: Backend/available_video_topics_update
+2024-10-16 19:11:46,920 - __main__ - INFO - Subscribed to topic: Backend/selected_video_topic_update
+2024-10-16 19:11:46,920 - __main__ - INFO - Subscribed to topic: Backend/latest_frame_from_selected_topic
+2024-10-16 19:11:46,920 - __main__ - INFO - Subscribed to topic: Backend/error_banner
+2024-10-16 19:11:46,920 - __main__ - INFO - Subscribed to topic: Backend/gaze_enabled_state_update
+2024-10-16 19:11:46,921 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:1111
+2024-10-16 19:11:46,921 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2024-10-16 19:11:47,206 - __main__ - INFO - Published message on topic: Backend/latest_frame_from_selected_topic
+2024-10-16 19:11:47,409 - __main__ - INFO - Published message on topic: Backend/gaze_enabled_state_update
+2024-10-16 19:11:47,424 - __main__ - WARNING - Attempted to stop mission without robot connection
+2024-10-16 19:11:47,424 - __main__ - INFO - Published message on topic: Backend/error_banner
+2024-10-16 19:11:47,424 - __main__ - WARNING - Attempted to stop mission without robot connection
+2024-10-16 19:11:47,425 - __main__ - INFO - Published message on topic: Backend/error_banner
+2024-10-16 19:11:47,656 - __main__ - INFO - Published message on topic: Backend/latest_frame_from_selected_topic
+2024-10-16 19:11:47,656 - __main__ - WARNING - Attempted to stop mission without robot connection
+2024-10-16 19:11:47,657 - __main__ - INFO - Published message on topic: Backend/error_banner
+2024-10-16 19:11:47,843 - __main__ - ERROR - Error in subscriber: 'topic'
+2024-10-16 19:11:48,068 - __main__ - INFO - Published message on topic: Backend/latest_frame_from_selected_topic
+2024-10-16 19:11:48,530 - __main__ - INFO - Published message on topic: Backend/latest_frame_from_selected_topic
+2024-10-16 19:11:48,679 - __main__ - ERROR - Error in subscriber: 'state'
+2024-10-16 19:11:48,904 - __main__ - INFO - Published message on topic: Backend/latest_frame_from_selected_topic
+2024-10-16 19:11:49,050 - __main__ - ERROR - Error in subscriber: 'mission_state'
+2024-10-16 19:11:49,318 - __main__ - INFO - Published message on topic: Backend/latest_frame_from_selected_topic
+2024-10-16 19:11:49,467 - __main__ - ERROR - Error in subscriber: 'topics'
+2024-10-16 19:11:49,747 - __main__ - INFO - Published message on topic: Backend/latest_frame_from_selected_topic
+2024-10-16 19:11:49,898 - __main__ - ERROR - Error in subscriber: 'topic'
+2024-10-16 19:11:50,136 - __main__ - INFO - Published message on topic: Backend/latest_frame_from_selected_topic
+2024-10-16 19:11:50,595 - __main__ - INFO - Published message on topic: Backend/latest_frame_from_selected_topic
+2024-10-16 19:11:50,743 - __main__ - ERROR - Error in subscriber: 'message'
+2024-10-16 19:11:50,979 - __main__ - INFO - Published message on topic: Backend/latest_frame_from_selected_topic
+2024-10-16 19:11:51,128 - __main__ - ERROR - Error in subscriber: 'gaze_enabled'
+2024-10-16 19:11:51,368 - __main__ - INFO - Published message on topic: Backend/latest_frame_from_selected_topic
+2024-10-16 19:11:51,522 - __main__ - INFO - Published message on topic: Backend/gaze_enabled_state_update
+2024-10-16 19:11:51,533 - __main__ - WARNING - Attempted to stop mission without robot connection
+2024-10-16 19:11:51,533 - __main__ - INFO - Published message on topic: Backend/error_banner
+2024-10-16 19:11:51,533 - __main__ - WARNING - Attempted to stop mission without robot connection
+2024-10-16 19:11:51,533 - __main__ - INFO - Published message on topic: Backend/error_banner
+2024-10-16 19:11:51,799 - __main__ - INFO - Published message on topic: Backend/latest_frame_from_selected_topic
+2024-10-16 19:11:51,799 - __main__ - WARNING - Attempted to stop mission without robot connection
+2024-10-16 19:11:51,799 - __main__ - INFO - Published message on topic: Backend/error_banner
+2024-10-16 19:11:51,946 - __main__ - ERROR - Error in subscriber: 'topic'
+2024-10-16 19:11:52,172 - __main__ - INFO - Published message on topic: Backend/latest_frame_from_selected_topic
+2024-10-16 19:11:52,589 - __main__ - INFO - Published message on topic: Backend/latest_frame_from_selected_topic
+2024-10-16 19:11:52,732 - __main__ - ERROR - Error in subscriber: 'state'
+2024-10-16 19:11:53,012 - __main__ - INFO - Published message on topic: Backend/latest_frame_from_selected_topic
+2024-10-16 19:11:53,162 - __main__ - ERROR - Error in subscriber: 'mission_state'
+2024-10-16 19:11:53,406 - __main__ - INFO - Published message on topic: Backend/latest_frame_from_selected_topic
+2024-10-16 19:11:53,569 - __main__ - ERROR - Error in subscriber: 'topics'
+2024-10-16 19:11:53,807 - __main__ - INFO - Published message on topic: Backend/latest_frame_from_selected_topic
+2024-10-16 19:11:53,965 - __main__ - ERROR - Error in subscriber: 'topic'
+2024-10-16 19:11:54,207 - __main__ - INFO - Published message on topic: Backend/latest_frame_from_selected_topic
+2024-10-16 19:11:54,737 - __main__ - INFO - Published message on topic: Backend/latest_frame_from_selected_topic
+2024-10-16 19:11:54,915 - __main__ - ERROR - Error in subscriber: 'message'
+2024-10-16 19:11:55,240 - __main__ - INFO - Published message on topic: Backend/latest_frame_from_selected_topic
+2024-10-16 19:11:55,389 - __main__ - ERROR - Error in subscriber: 'gaze_enabled'
+2024-10-16 19:11:55,790 - __main__ - INFO - Published message on topic: Backend/latest_frame_from_selected_topic
+2024-10-16 19:11:56,016 - __main__ - INFO - Published message on topic: Backend/gaze_enabled_state_update
+2024-10-16 19:11:56,035 - __main__ - WARNING - Attempted to stop mission without robot connection
+2024-10-16 19:11:56,035 - __main__ - INFO - Published message on topic: Backend/error_banner
+2024-10-16 19:11:56,036 - __main__ - WARNING - Attempted to stop mission without robot connection
+2024-10-16 19:11:56,036 - __main__ - INFO - Published message on topic: Backend/error_banner
+2024-10-16 19:11:56,383 - __main__ - INFO - Published message on topic: Backend/latest_frame_from_selected_topic
+2024-10-16 19:11:56,383 - __main__ - WARNING - Attempted to stop mission without robot connection
+2024-10-16 19:11:56,384 - __main__ - INFO - Published message on topic: Backend/error_banner
+2024-10-16 19:11:56,554 - __main__ - ERROR - Error in subscriber: 'topic'
+2024-10-16 19:11:56,795 - __main__ - INFO - Published message on topic: Backend/latest_frame_from_selected_topic
+2024-10-16 19:11:57,196 - __main__ - INFO - Published message on topic: Backend/latest_frame_from_selected_topic
+2024-10-16 19:11:57,355 - __main__ - ERROR - Error in subscriber: 'state'
+2024-10-16 19:11:57,595 - __main__ - INFO - Published message on topic: Backend/latest_frame_from_selected_topic
+2024-10-16 19:11:57,744 - __main__ - ERROR - Error in subscriber: 'mission_state'
+2024-10-16 19:11:58,052 - __main__ - INFO - Published message on topic: Backend/latest_frame_from_selected_topic
+2024-10-16 19:11:58,230 - __main__ - ERROR - Error in subscriber: 'topics'
+2024-10-16 19:11:58,517 - __main__ - INFO - Published message on topic: Backend/latest_frame_from_selected_topic
+2024-10-16 19:11:58,667 - __main__ - ERROR - Error in subscriber: 'topic'
+2024-10-16 19:11:58,949 - __main__ - INFO - Published message on topic: Backend/latest_frame_from_selected_topic
+2024-10-16 19:11:59,482 - __main__ - INFO - Published message on topic: Backend/latest_frame_from_selected_topic
+2024-10-16 19:11:59,638 - __main__ - ERROR - Error in subscriber: 'message'
+2024-10-16 19:11:59,916 - __main__ - INFO - Published message on topic: Backend/latest_frame_from_selected_topic
+2024-10-16 19:12:00,097 - __main__ - ERROR - Error in subscriber: 'gaze_enabled'
+2024-10-16 19:12:00,342 - __main__ - INFO - Published message on topic: Backend/latest_frame_from_selected_topic
+2024-10-16 19:12:00,502 - __main__ - INFO - Published message on topic: Backend/gaze_enabled_state_update
+2024-10-16 19:12:00,515 - __main__ - WARNING - Attempted to stop mission without robot connection
+2024-10-16 19:12:00,515 - __main__ - INFO - Published message on topic: Backend/error_banner
+2024-10-16 19:12:00,515 - __main__ - WARNING - Attempted to stop mission without robot connection
+2024-10-16 19:12:00,515 - __main__ - INFO - Published message on topic: Backend/error_banner
+2024-10-16 19:12:00,749 - __main__ - INFO - Published message on topic: Backend/latest_frame_from_selected_topic
+2024-10-16 19:12:00,749 - __main__ - WARNING - Attempted to stop mission without robot connection
+2024-10-16 19:12:00,749 - __main__ - INFO - Published message on topic: Backend/error_banner
+2024-10-16 19:12:00,901 - __main__ - ERROR - Error in subscriber: 'topic'
+2024-10-16 19:12:01,143 - __main__ - INFO - Published message on topic: Backend/latest_frame_from_selected_topic

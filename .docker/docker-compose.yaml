@@ -1,19 +1,23 @@
 version: '3.8'
 
 services:
+
   app_manager:
     build:
       context: .
       dockerfile: Dockerfile.web_host_python3_8
     volumes:
       - ../app/web_host:/app
+      - ../app/app_shared_data:/app_shared_data
     environment:
       - DISPLAY=${DISPLAY}
+      - PYTHONPATH=/app:/app_shared_data
     ports:
       - "5000:5000"
+      - "5555:5555"
     networks:
       - app_network
-    command: "python3 main.py"
+    command: "python3 main.py" # --enable-logging
 
   video_manager:
     build:
@@ -21,13 +25,15 @@ services:
       dockerfile: Dockerfile.ml_cv_python3_8
     volumes:
       - ../app/video_manager:/app
+      - ../app/app_shared_data:/app_shared_data
     environment:
       - DISPLAY=${DISPLAY}
+      - PYTHONPATH=/app:/app_shared_data
     networks:
       - app_network
     command: "python3 main.py"
 
+
 networks:
   app_network:
     driver: bridge
-

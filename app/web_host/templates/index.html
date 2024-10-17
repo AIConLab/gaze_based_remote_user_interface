@@ -3,43 +3,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Distributed System Interface</title>
-    <link rel="stylesheet" href="style.css">
+    <title>Robot Control Panel</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
-    <header>
-        <div class="menu-icon">☰</div>
-        <div class="header-controls">
-            <select id="video-topics">
-                <option value="">Video topics</option>
-            </select>
-            <button id="gaze-toggle">Enable Gaze</button>
-        </div>
-    </header>
-    
-    <div class="content">
-        <aside class="sidebar">
-            <div id="robot-connection">
-                <h3>Robot connection status</h3>
-                <!-- Add status information here -->
+    <div class="container">
+        <div class="sidebar">
+            <div class="section">
+                <h2>Robot connection status</h2>
+                <!-- Add connection status indicator here -->
             </div>
-            <div id="mission-control">
+            <div class="section">
+                <h2>Mission Control</h2>
                 <button id="mission-start">Mission Start</button>
+                <button id="mission-pause">Mission Pause</button>
                 <button id="mission-stop">Mission Stop</button>
             </div>
-            <div id="mission-files">
-                <h3>Mission files</h3>
-                <div class="file-area">
-                    <!-- Add mission files or waypoint images here -->
-                </div>
+            <div class="section">
+                <h2>Mission files</h2>
+                <!-- Add mission files list here -->
             </div>
-        </aside>
-        
-        <main class="main-content">
+        </div>
+        <div class="main-content">
+            <div class="controls">
+                <select id="video-topics">
+                    <option value="">Select Video Topic</option>
+                    <!-- Add video topics here -->
+                </select>
+                <button id="gaze-toggle">Enable Gaze</button>
+            </div>
             <div id="workspace">
                 <img src="{{ url_for('video_feed') }}" alt="Video Feed">
             </div>
-        </main>
+        </div>
     </div>
 </body>
 </html>
