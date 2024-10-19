@@ -3,35 +3,50 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Robot Control Panel</title>
+    <title>Robot Control Interface</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
     <div class="container">
         <div class="sidebar">
-            <div class="section">
+            <section class="section">
                 <h2>Robot connection status</h2>
-                <!-- Add connection status indicator here -->
-            </div>
-            <div class="section">
+                <p>Status: {% if robot_connected_state %}Connected{% else %}Disconnected{% endif %}</p>
+            </section>
+
+            <section class="section">
                 <h2>Mission Control</h2>
-                <button id="mission-start">Mission Start</button>
-                <button id="mission-pause">Mission Pause</button>
-                <button id="mission-stop">Mission Stop</button>
-            </div>
-            <div class="section">
+                <form method="post">
+                    <button type="submit" name="mission_start_button_pressed">Mission Start</button>
+                    <button type="submit" name="mission_pause_button_pressed">Mission Pause</button>
+                    <button type="submit" name="mission_stop_button_pressed">Mission Stop</button>
+                </form>
+            </section>
+
+            <section class="section">
                 <h2>Mission files</h2>
-                <!-- Add mission files list here -->
-            </div>
+                <!-- Add mission files content here -->
+            </section>
         </div>
+
         <div class="main-content">
             <div class="controls">
-                <select id="video-topics">
-                    <option value="">Select Video Topic</option>
-                    <!-- Add video topics here -->
-                </select>
-                <button id="gaze-toggle">Enable Gaze</button>
+                <form method="post">
+                    <label for="video_topic">Select Video Topic:</label>
+                    <select name="video_topic_selected" id="video_topic" onchange="this.form.submit()">
+                        {% for topic in available_video_topics %}
+                            <option value="{{ topic }}" {% if topic == selected_video_topic %}selected{% endif %}>{{ topic }}</option>
+                        {% endfor %}
+                    </select>
+                </form>
+
+                <form method="post">
+                    <button type="submit" name="gaze_button_pressed">
+                        {% if gaze_enabled_state %}Disable{% else %}Enable{% endif %} Gaze
+                    </button>
+                </form>
             </div>
+
             <div id="workspace">
                 <img src="{{ url_for('video_feed') }}" alt="Video Feed">
             </div>

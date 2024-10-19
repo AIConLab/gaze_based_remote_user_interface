@@ -1,0 +1,13 @@
+2024-10-18 22:53:02,466 - __main__ - INFO - Module Processor starting
+2024-10-18 22:53:02,468 - __main__ - INFO - VideoRenderer started
+2024-10-18 22:53:02,468 - __main__ - INFO - ModuleController started
+2024-10-18 22:53:02,468 - __main__ - INFO - ModuleDataPath started
+2024-10-18 22:53:02,469 - __main__ - INFO - WebcamModule started
+2024-10-18 22:53:03,727 - asyncio - ERROR - Task exception was never retrieved
+future: <Task finished name='Task-8' coro=<MessageBroker.subscribe() done, defined at /app_shared_data/message_broker.py:28> exception=KeyError('topic')>
+Traceback (most recent call last):
+  File "/app_shared_data/message_broker.py", line 32, in subscribe
+    await callback(topic.decode(), msgpack.unpackb(msg))
+  File "main.py", line 81, in handle_selected_video_topic_update
+    self.selected_video_topic = message["topic"]
+KeyError: 'topic'

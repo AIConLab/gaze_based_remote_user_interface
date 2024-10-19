@@ -1,0 +1,18 @@
+2024-10-18 22:44:17,540 - __main__ - INFO - Module Processor starting
+2024-10-18 22:44:17,541 - message_broker - INFO - ZMQ publisher connected to tcp://zmq_proxy:5559
+2024-10-18 22:44:17,541 - message_broker - INFO - ZMQ subscriber connected to tcp://zmq_proxy:5560
+2024-10-18 22:44:17,541 - message_broker - INFO - ZMQ publisher connected to tcp://zmq_proxy:5559
+2024-10-18 22:44:17,541 - message_broker - INFO - ZMQ subscriber connected to tcp://zmq_proxy:5560
+2024-10-18 22:44:17,542 - message_broker - INFO - ZMQ publisher connected to tcp://zmq_proxy:5559
+2024-10-18 22:44:17,542 - message_broker - INFO - ZMQ subscriber connected to tcp://zmq_proxy:5560
+2024-10-18 22:44:17,542 - message_broker - INFO - ZMQ publisher connected to tcp://zmq_proxy:5559
+2024-10-18 22:44:17,543 - message_broker - INFO - ZMQ subscriber connected to tcp://zmq_proxy:5560
+2024-10-18 22:44:17,544 - __main__ - INFO - VideoRenderer started
+2024-10-18 22:44:17,544 - __main__ - INFO - ModuleController started
+2024-10-18 22:44:17,544 - __main__ - INFO - ModuleDataPath started
+2024-10-18 22:44:17,544 - __main__ - INFO - WebcamModule started
+2024-10-18 22:44:17,987 - message_broker - ERROR - Error in subscriber: 'topic'
+2024-10-18 22:44:21,231 - message_broker - ERROR - Error in subscriber: 'topic'
+2024-10-18 22:44:24,704 - message_broker - ERROR - Error in subscriber: 'topic'
+2024-10-18 22:44:28,441 - message_broker - ERROR - Error in subscriber: 'topic'
+2024-10-18 22:44:31,993 - message_broker - ERROR - Error in subscriber: 'topic'

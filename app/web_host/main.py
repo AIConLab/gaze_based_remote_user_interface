@@ -1,3 +1,5 @@
+# web_host/main.py
+
 import asyncio
 import numpy as np
 import zmq
@@ -12,8 +14,9 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from collections import deque
 
-# enum_definitiosn defined in /app/app_shared_data/enum_definitions.py
+# Following defined in app/app_shared_data
 from enum_definitions import MissionStates, MissionCommandSignals
+from message_broker import MessageBroker
 
 
 def setup_logging(enable_logging):
@@ -35,34 +38,8 @@ def setup_logging(enable_logging):
         logging.basicConfig(level=logging.ERROR)
 
 
-class MessageBroker:
-    def __init__(self):
-        self.context = zmq.asyncio.Context()
-        self.publisher = self.context.socket(zmq.PUB)
-        self.publisher.bind("tcp://*:5555")
-        self.subscriber = self.context.socket(zmq.SUB)
-        self.subscriber.connect("tcp://localhost:5555")
-        self.logger = logging.getLogger(__name__)
-
-    async def publish(self, topic, message):
-        try:
-            full_topic = topic.encode()
-            await self.publisher.send_multipart([full_topic, msgpack.packb(message)])
-        except Exception as e:
-            pass
-
-    async def subscribe(self, topic, callback):
-        self.subscriber.setsockopt(zmq.SUBSCRIBE, topic.encode())
-        while True:
-
-            try:
-                [topic, msg] = await self.subscriber.recv_multipart()
-                await callback(topic.decode(), msgpack.unpackb(msg))
-            except Exception as e:
-                pass
-
 class Backend:
-    def __init__(self, message_broker: MessageBroker, video_buffer_length: int = 10, video_frame_rate: int = 15):
+    def __init__(self, video_buffer_length: int = 10, video_frame_rate: int = 15, message_broker: MessageBroker = None):
         self.message_broker = message_broker
 
         self.gaze_enabled_state = False
@@ -80,8 +57,6 @@ class Backend:
     async def start(self):
         self.logger.info("Backend started")
 
-        # Continous Publisher
-        asyncio.create_task(self.publish_latest_frame())
 
         # Front end subscriptions
         asyncio.create_task(self.message_broker.subscribe(
@@ -98,34 +73,17 @@ class Backend:
         asyncio.create_task(self.message_broker.subscribe(
             "Frontend/video_topic_selected", self.handle_video_topic_selected))
 
-        # Video Manager subscriptions
+        # Video Renderer subscriptions
         asyncio.create_task(self.message_broker.subscribe(
-            "VideoManager/latest_frame_of_selected_topic", self.handle_latest_frame_of_selected_topic))
+            "VideoRender/latest_rendered_frame", self.handle_latest_frame_of_selected_topic))
+
+        # ModuleDatapath subscriptions
         asyncio.create_task(self.message_broker.subscribe(
-            "VideoManager/available_video_topics", self.handle_available_video_topics))
+            "ModuleDatapath/available_video_topics", self.handle_available_video_topics))
 
         # MissionManager subscriptions
         asyncio.create_task(self.message_broker.subscribe(
             "MissionManager/mission_state_update", self.handle_mission_state_update))
-
-    async def publish_latest_frame(self):
-        while True:
-            if self.latest_frame is not None:
-                # Convert numpy array to list before publishing
-                frame_list = self.latest_frame.tolist()
-                await self.message_broker.publish("Backend/latest_frame_from_selected_topic", {'frame': frame_list})
-            else:
-                # Create a blank frame with text when no frame is available
-                blank_frame = np.zeros((480, 640, 3), dtype=np.uint8)
-                cv2.putText(blank_frame, "Nothing to show", (50, 240),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-                frame_list = blank_frame.tolist()
-                await self.message_broker.publish("Backend/latest_frame_from_selected_topic", {'frame': frame_list})
-
-            if self.video_frame_rate > 0:
-                await asyncio.sleep(1/self.video_frame_rate)
-            else:
-                await asyncio.sleep(1/15)  # Default to 15 fps
 
     async def handle_gaze_enabled_button_pressed(self, topic, message):
         self.gaze_enabled_state = not self.gaze_enabled_state
@@ -164,7 +122,9 @@ class Backend:
         if not self.robot_connected_state or self.mission_state is None:
             self.logger.warning(
                 "Attempted to stop mission without robot connection")
+
             await self.message_broker.publish("Backend/error_banner", {"message": "Robot not connected or mission package not launched"})
+
             return
 
         await self.message_broker.publish("MissionManager/mission_command", {"command": MissionCommandSignals.MISSION_ABORT})
@@ -173,16 +133,17 @@ class Backend:
         """
         Callback for when a video topic is selected by the user, publishes the selected topic to VideoManager and Frontend
         """
-        self.selected_video_topic = message['topic']
-        await self.message_broker.publish("Backend/selected_video_topic_update", {"topic": self.selected_video_topic})
+        if isinstance(message, dict) and 'topic' in message:
+            self.selected_video_topic = message['topic']
+            # Publish to ModuleController
+            await self.message_broker.publish("Backend/selected_video_topic_update", {"topic": self.selected_video_topic})
+        else:
+            self.logger.warning(f"Received invalid message format for video topic selected: {message}")
 
     async def handle_latest_frame_of_selected_topic(self, topic, message):
         try:
-            if 'topic' in message and 'frame' in message and message['topic'] == self.selected_video_topic:
-                self.latest_frame = np.array(message['frame'], dtype=np.uint8)
-                self.video_buffer.append(self.latest_frame)
-            else:
-                self.logger.warning(f"Received invalid frame message: {message}")
+            await self.message_broker.publish("Backend/selected_topic_latest_frame", {"frame": message['frame']})
+
         except Exception as e:
             pass
 
@@ -201,7 +162,7 @@ class Backend:
             pass
     
 class Frontend:
-    def __init__(self, message_broker, ip: str, port: int, network_debug:bool=False, network_reloader:bool=False):
+    def __init__(self, ip: str, port: int, network_debug:bool=False, network_reloader:bool=False, message_broker: MessageBroker = None):
         self.ip = ip
         self.port = port
         self.network_debug = network_debug
@@ -233,23 +194,18 @@ class Frontend:
             return jsonify(self.state)
 
     async def start(self):
-        """
-        Entry point for the frontend
-        """
         self.logger.info("Frontend started")
 
+        
+        # Backend subscriptions
         asyncio.create_task(self.message_broker.subscribe(
             "Backend/mission_state_update", self.handle_mission_state_update))
         asyncio.create_task(self.message_broker.subscribe(
             "Backend/available_video_topics_update", self.handle_available_video_topics_update))
         asyncio.create_task(self.message_broker.subscribe(
-            "Backend/selected_video_topic_update", self.handle_selected_video_topic_update))
-        asyncio.create_task(self.message_broker.subscribe(
-            "Backend/latest_frame_from_selected_topic", self.handle_video_frame))
+            "Backend/selected_topic_latest_frame", self.handle_video_frame))
         asyncio.create_task(self.message_broker.subscribe(
             "Backend/error_banner", self.handle_error_banner))
-        asyncio.create_task(self.message_broker.subscribe(
-            "Backend/gaze_enabled_state_update", self.handle_gaze_enabled_state_update))
 
         # Run Flask app in a separate thread
         self.executor.submit(self.run_flask)
@@ -285,13 +241,17 @@ class Frontend:
             await self.message_broker.publish("Frontend/mission_pause_button_pressed", {'type': 'mission_pause_button_pressed'})
         elif "mission_stop_button_pressed" in form:
             await self.message_broker.publish("Frontend/mission_stop_button_pressed", {'type': 'mission_stop_button_pressed'})
+        elif "video_topic_selected" in form:
+            selected_topic = form.get("video_topic_selected")
+            await self.message_broker.publish("Frontend/video_topic_selected", {'topic': selected_topic})
+
 
     def render_frames(self):
         while True:
             if self.current_frame is None:
-                frame = np.zeros((480, 640, 3), dtype=np.uint8)
-                cv2.putText(frame, "Nothing to show", (50, 240),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+                frame = np.zeros((240, 320, 3), dtype=np.uint8)
+                cv2.putText(frame, "Nothing to show", (25, 120),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
             else:
                 frame = self.current_frame
 
@@ -299,6 +259,14 @@ class Frontend:
             frame = buffer.tobytes()
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+
+    async def handle_video_frame(self, topic, message):
+        if isinstance(message, dict) and "frame" in message:
+            compressed_frame = message['frame']
+            np_arr = np.frombuffer(compressed_frame, np.uint8)
+            self.current_frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+        else:
+            self.logger.warning(f"Received invalid message format for video frame: {message}")
 
     async def handle_error_banner(self, topic, message):
         pass
@@ -310,41 +278,40 @@ class Frontend:
             pass
 
     async def handle_available_video_topics_update(self, topic, message):
-        self.state['available_video_topics'] = message['topics']
-
-    async def handle_selected_video_topic_update(self, topic, message):
-        self.state['selected_video_topic'] = message['topic']
-
-    async def handle_video_frame(self, topic, message):
-        # Update the current frame for display
-        self.current_frame = np.array(message['frame'], dtype=np.uint8)
-
-    async def handle_gaze_enabled_state_update(self, topic, message):
-        if 'gaze_enabled' in message:
-            self.state['gaze_enabled_state'] = message['gaze_enabled']
+        if isinstance(message, dict) and "topics" in message:
+            self.state['available_video_topics'] = message['topics']
         else:
-            pass
+            self.logger.warning(f"Received invalid message format for available video topics: {message}")
+
+
+    async def handle_video_topic_selected(self, topic, message):
+        if isinstance(message, dict) and "topic" in message:
+            self.selected_video_topic = message['topic']
+            await self.message_broker.publish("Backend/selected_video_topic_update", {"topic": self.selected_video_topic})
+        else:
+            self.logger.warning(f"Received invalid message format for video topic selected: {message}")
+
 
 async def main(enable_logging):
     setup_logging(enable_logging)
     logger = logging.getLogger(__name__)
-    logger.info("Application starting")
+    logger.info("Web host starting")
 
-    message_broker = MessageBroker()
-    backend = Backend(message_broker, video_buffer_length=10,
-                      video_frame_rate=15)
-    frontend = Frontend(message_broker, ip='0.0.0.0', port=5000,
-                        network_debug=False, network_reloader=False)
+    message_broker = MessageBroker(max_queue_size=10)
+    backend = Backend(video_buffer_length=10,
+                      video_frame_rate=15, message_broker=message_broker)
+    frontend = Frontend(ip='0.0.0.0', port=5000,
+                        network_debug=False, network_reloader=False, message_broker=message_broker)
 
     await asyncio.gather(
         backend.start(),
         frontend.start()
     )
 
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--enable-logging', action='store_true',
-                        help='Enable logging to app/logs directory')
+    parser.add_argument('--enable-logging', action='store_true', help='Enable logging')
     args = parser.parse_args()
 
     asyncio.run(main(args.enable_logging))
