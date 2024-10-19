@@ -11,7 +11,7 @@ services:
     ports:
       - "5559:5559"
       - "5560:5560"
-    command: "python3 zmq_proxy.py"
+    command: "python3 zmq_proxy.py --enable-logging"
     networks:
       - app_network
 
@@ -27,13 +27,14 @@ services:
       - PYTHONPATH=/app:/app_shared_data
       - ZMQ_PUB_ADDRESS=tcp://zmq_proxy:5559
       - ZMQ_SUB_ADDRESS=tcp://zmq_proxy:5560
+
     ports:
       - "5000:5000"
     networks:
       - app_network
     depends_on:
       - zmq_proxy
-    command: "python3 main.py" # --enable-logging
+    command: "python3 main.py --enable-logging"
 
   module_processor:
     build:
@@ -43,7 +44,7 @@ services:
       - ../app/module_processor:/app
       - ../app/app_shared_data:/app_shared_data
     devices:
-    - "/dev/video0:/dev/video0"  # Webcam
+      - "/dev/video0:/dev/video0"  # Webcam
     environment:
       - DISPLAY=${DISPLAY}
       - PYTHONPATH=/app:/app_shared_data

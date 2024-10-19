@@ -1,0 +1,17 @@
+2024-10-19 04:08:55,585 - root - INFO - Starting ZeroMQ proxy
+2024-10-19 04:08:55,585 - root - INFO - Frontend bound to tcp://*:5559
+2024-10-19 04:08:55,585 - root - INFO - Backend bound to tcp://*:5560
+2024-10-19 04:08:56,050 - root - INFO - Proxy received message from backend: [b'\x01Frontend/gaze_enabled_button_pressed']
+2024-10-19 04:08:56,050 - root - INFO - Proxy received message from backend: [b'\x01Frontend/mission_start_button_pressed']
+2024-10-19 04:08:56,050 - root - INFO - Proxy received message from backend: [b'\x01Frontend/mission_pause_button_pressed']
+2024-10-19 04:08:56,051 - root - INFO - Proxy received message from backend: [b'\x01Frontend/mission_stop_button_pressed']
+2024-10-19 04:08:56,051 - root - INFO - Proxy received message from backend: [b'\x01Frontend/video_topic_selected']
+2024-10-19 04:08:56,051 - root - INFO - Proxy received message from backend: [b'\x01Backend/mission_state_update']
+2024-10-19 04:08:56,051 - root - INFO - Proxy received message from backend: [b'\x01Backend/selected_topic_latest_frame']
+2024-10-19 04:09:35,162 - root - INFO - Proxy received message from backend: [b'\x00Backend/mission_state_update']
+2024-10-19 04:09:35,163 - root - INFO - Proxy received message from backend: [b'\x00Backend/selected_topic_latest_frame']
+2024-10-19 04:09:35,163 - root - INFO - Proxy received message from backend: [b'\x00Frontend/gaze_enabled_button_pressed']
+2024-10-19 04:09:35,164 - root - INFO - Proxy received message from backend: [b'\x00Frontend/mission_pause_button_pressed']
+2024-10-19 04:09:35,165 - root - INFO - Proxy received message from backend: [b'\x00Frontend/mission_start_button_pressed']
+2024-10-19 04:09:35,166 - root - INFO - Proxy received message from backend: [b'\x00Frontend/mission_stop_button_pressed']
+2024-10-19 04:09:35,166 - root - INFO - Proxy received message from backend: [b'\x00Frontend/video_topic_selected']

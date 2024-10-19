@@ -1,0 +1,24 @@
+2024-10-19 03:43:51,530 - __main__ - INFO - Web host starting
+2024-10-19 03:43:51,530 - message_broker - INFO - Connecting to ZMQ_PUB_ADDRESS: tcp://zmq_proxy:5559
+2024-10-19 03:43:51,530 - message_broker - INFO - Connecting to ZMQ_SUB_ADDRESS: tcp://zmq_proxy:5560
+2024-10-19 03:43:51,531 - asyncio - DEBUG - Using selector: EpollSelector
+2024-10-19 03:43:51,532 - asyncio - DEBUG - Using selector: EpollSelector
+2024-10-19 03:43:51,533 - __main__ - DEBUG - Starting Flask app
+2024-10-19 03:43:51,533 - __main__ - INFO - Starting backend and frontend
+2024-10-19 03:43:51,533 - __main__ - INFO - Backend started
+2024-10-19 03:43:51,533 - message_broker - INFO - Subscribing to topic: Frontend/gaze_enabled_button_pressed
+2024-10-19 03:43:51,534 - message_broker - INFO - Subscribing to topic: Frontend/mission_start_button_pressed
+2024-10-19 03:43:51,534 - message_broker - INFO - Subscribing to topic: Frontend/mission_pause_button_pressed
+2024-10-19 03:43:51,534 - message_broker - INFO - Subscribing to topic: Frontend/mission_stop_button_pressed
+2024-10-19 03:43:51,534 - message_broker - INFO - Subscribing to topic: Frontend/video_topic_selected
+2024-10-19 03:43:51,535 - __main__ - INFO - Frontend started
+2024-10-19 03:43:51,535 - message_broker - INFO - Subscribing to topic: Backend/mission_state_update
+2024-10-19 03:43:51,535 - message_broker - INFO - Subscribing to topic: Backend/selected_topic_latest_frame
+2024-10-19 03:44:01,014 - __main__ - INFO - Received POST request: ImmutableMultiDict([('mission_start_button_pressed', '')])
+2024-10-19 03:44:01,524 - __main__ - INFO - Received POST request: ImmutableMultiDict([('mission_pause_button_pressed', '')])
+2024-10-19 03:44:01,980 - __main__ - INFO - Received POST request: ImmutableMultiDict([('mission_stop_button_pressed', '')])
+2024-10-19 03:44:02,804 - __main__ - INFO - Received POST request: ImmutableMultiDict([('gaze_button_pressed', '')])
+2024-10-19 03:44:03,202 - __main__ - INFO - Received POST request: ImmutableMultiDict([('gaze_button_pressed', '')])
+2024-10-19 03:44:19,389 - __main__ - INFO - Received POST request: ImmutableMultiDict([('gaze_button_pressed', '')])
+2024-10-19 03:44:19,696 - __main__ - INFO - Received POST request: ImmutableMultiDict([('gaze_button_pressed', '')])
+2024-10-19 03:44:20,034 - __main__ - INFO - Received POST request: ImmutableMultiDict([('gaze_button_pressed', '')])

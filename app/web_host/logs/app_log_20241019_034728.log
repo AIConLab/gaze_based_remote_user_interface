@@ -1,0 +1,20 @@
+2024-10-19 03:47:28,267 - __main__ - INFO - Web host starting
+2024-10-19 03:47:28,268 - message_broker - INFO - Connecting to ZMQ_PUB_ADDRESS: tcp://zmq_proxy:5559
+2024-10-19 03:47:28,268 - message_broker - INFO - Connecting to ZMQ_SUB_ADDRESS: tcp://zmq_proxy:5560
+2024-10-19 03:47:28,269 - asyncio - DEBUG - Using selector: EpollSelector
+2024-10-19 03:47:28,269 - asyncio - DEBUG - Using selector: EpollSelector
+2024-10-19 03:47:28,271 - __main__ - DEBUG - Starting Flask app
+2024-10-19 03:47:28,271 - __main__ - INFO - Starting backend and frontend
+2024-10-19 03:47:28,271 - __main__ - INFO - Backend started
+2024-10-19 03:47:28,271 - message_broker - INFO - Subscribing to topic: Frontend/gaze_enabled_button_pressed
+2024-10-19 03:47:28,272 - message_broker - INFO - Subscribing to topic: Frontend/mission_start_button_pressed
+2024-10-19 03:47:28,272 - message_broker - INFO - Subscribing to topic: Frontend/mission_pause_button_pressed
+2024-10-19 03:47:28,272 - message_broker - INFO - Subscribing to topic: Frontend/mission_stop_button_pressed
+2024-10-19 03:47:28,272 - message_broker - INFO - Subscribing to topic: Frontend/video_topic_selected
+2024-10-19 03:47:28,272 - __main__ - INFO - Frontend started
+2024-10-19 03:47:28,272 - message_broker - INFO - Subscribing to topic: Backend/mission_state_update
+2024-10-19 03:47:28,273 - message_broker - INFO - Subscribing to topic: Backend/selected_topic_latest_frame
+2024-10-19 03:47:31,953 - __main__ - DEBUG - Received POST request: ImmutableMultiDict([('mission_start_button_pressed', '')])
+2024-10-19 03:47:32,489 - __main__ - DEBUG - Received POST request: ImmutableMultiDict([('mission_pause_button_pressed', '')])
+2024-10-19 03:47:32,953 - __main__ - DEBUG - Received POST request: ImmutableMultiDict([('mission_stop_button_pressed', '')])
+2024-10-19 03:47:33,795 - __main__ - DEBUG - Received POST request: ImmutableMultiDict([('gaze_button_pressed', '')])
