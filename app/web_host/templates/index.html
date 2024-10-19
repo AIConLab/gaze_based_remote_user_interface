@@ -5,52 +5,75 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Robot Control Interface</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 </head>
 <body>
     <div class="container">
         <div class="sidebar">
-            <section class="section">
+            <div class="section">
                 <h2>Robot connection status</h2>
-                <p>Status: {% if robot_connected_state %}Connected{% else %}Disconnected{% endif %}</p>
-            </section>
-
-            <section class="section">
+                <p>Status: <span id="connection-status">{% if robot_connected_state %}Connected{% else %}Disconnected{% endif %}</span></p>
+            </div>
+            <div class="section">
                 <h2>Mission Control</h2>
-                <form method="post">
-                    <button type="submit" name="mission_start_button_pressed">Mission Start</button>
-                    <button type="submit" name="mission_pause_button_pressed">Mission Pause</button>
-                    <button type="submit" name="mission_stop_button_pressed">Mission Stop</button>
-                </form>
-            </section>
-
-            <section class="section">
+                <button id="mission-start">Mission Start</button>
+                <button id="mission-pause">Mission Pause</button>
+                <button id="mission-stop">Mission Stop</button>
+            </div>
+            <div class="section">
                 <h2>Mission files</h2>
                 <!-- Add mission files content here -->
-            </section>
+            </div>
         </div>
-
         <div class="main-content">
             <div class="controls">
-                <form method="post">
-                    <label for="video_topic">Select Video Topic:</label>
-                    <select name="video_topic_selected" id="video_topic" onchange="this.form.submit()">
-                        {% for topic in available_video_topics %}
-                            <option value="{{ topic }}" {% if topic == selected_video_topic %}selected{% endif %}>{{ topic }}</option>
-                        {% endfor %}
-                    </select>
-                </form>
-
-                <form method="post">
-                    <button type="submit" name="gaze_button_pressed">
-                        {% if gaze_enabled_state %}Disable{% else %}Enable{% endif %} Gaze
-                    </button>
-                </form>
+                <select id="video-topics">
+                    <option value="">Select Video Topic</option>
+                    {% for topic in available_video_topics %}
+                        <option value="{{ topic }}">{{ topic }}</option>
+                    {% endfor %}
+                </select>
+                <button id="gaze-toggle">{% if gaze_enabled_state %}Disable{% else %}Enable{% endif %} Gaze</button>
             </div>
-
             <div id="workspace">
                 <img src="{{ url_for('video_feed') }}" alt="Video Feed">
             </div>
         </div>
     </div>
+
+    <script>
+        $(document).ready(function() {
+            function sendButtonPress(buttonType) {
+                $.post('/button_press', { [buttonType]: '' }, function(response) {
+                    console.log('Button press response:', response);
+                });
+            }
+
+            $('#mission-start').click(function() { sendButtonPress('mission_start_button_pressed'); });
+            $('#mission-pause').click(function() { sendButtonPress('mission_pause_button_pressed'); });
+            $('#mission-stop').click(function() { sendButtonPress('mission_stop_button_pressed'); });
+            $('#gaze-toggle').click(function() { sendButtonPress('gaze_button_pressed'); });
+
+            $('#video-topics').change(function() {
+                var selectedTopic = $(this).val();
+                if (selectedTopic) {
+                    $.post('/button_press', { video_topic_selected: selectedTopic }, function(response) {
+                        console.log('Video topic selection response:', response);
+                    });
+                }
+            });
+
+            // Periodically update the page state
+            function updateState() {
+                $.get('/state', function(data) {
+                    $('#connection-status').text(data.robot_connected_state ? 'Connected' : 'Disconnected');
+                    $('#gaze-toggle').text((data.gaze_enabled_state ? 'Disable' : 'Enable') + ' Gaze');
+                    // Update other state elements as needed
+                });
+            }
+
+            setInterval(updateState, 1000); // Update every second
+        });
+    </script>
 </body>
 </html>

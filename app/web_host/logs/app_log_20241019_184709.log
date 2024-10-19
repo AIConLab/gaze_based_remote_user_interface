@@ -1,0 +1,113 @@
+2024-10-19 18:47:09,799 - __main__ - INFO - Web host starting
+2024-10-19 18:47:09,799 - asyncio - DEBUG - Using selector: EpollSelector
+2024-10-19 18:47:09,799 - message_broker - INFO - Connecting to ZMQ_PUB_ADDRESS: tcp://zmq_proxy:5559
+2024-10-19 18:47:09,799 - message_broker - INFO - Connecting to ZMQ_SUB_ADDRESS: tcp://zmq_proxy:5560
+2024-10-19 18:47:09,800 - asyncio - DEBUG - Using selector: EpollSelector
+2024-10-19 18:47:09,802 - __main__ - INFO - Starting backend and frontend
+2024-10-19 18:47:09,802 - __main__ - INFO - Backend started
+2024-10-19 18:47:09,802 - message_broker - INFO - Subscribing to topic: Frontend/gaze_enabled_button_pressed
+2024-10-19 18:47:09,802 - message_broker - DEBUG - Set subscription for topic: Frontend/gaze_enabled_button_pressed
+2024-10-19 18:47:09,802 - message_broker - DEBUG - Added callback for topic: Frontend/gaze_enabled_button_pressed
+2024-10-19 18:47:09,802 - message_broker - DEBUG - Started message loop
+2024-10-19 18:47:09,802 - message_broker - INFO - Subscribing to topic: Frontend/mission_start_button_pressed
+2024-10-19 18:47:09,802 - message_broker - DEBUG - Set subscription for topic: Frontend/mission_start_button_pressed
+2024-10-19 18:47:09,802 - message_broker - DEBUG - Added callback for topic: Frontend/mission_start_button_pressed
+2024-10-19 18:47:09,803 - message_broker - INFO - Subscribing to topic: Frontend/mission_pause_button_pressed
+2024-10-19 18:47:09,803 - message_broker - DEBUG - Set subscription for topic: Frontend/mission_pause_button_pressed
+2024-10-19 18:47:09,803 - message_broker - DEBUG - Added callback for topic: Frontend/mission_pause_button_pressed
+2024-10-19 18:47:09,803 - message_broker - INFO - Subscribing to topic: Frontend/mission_stop_button_pressed
+2024-10-19 18:47:09,803 - message_broker - DEBUG - Set subscription for topic: Frontend/mission_stop_button_pressed
+2024-10-19 18:47:09,803 - message_broker - DEBUG - Added callback for topic: Frontend/mission_stop_button_pressed
+2024-10-19 18:47:09,803 - message_broker - INFO - Subscribing to topic: Frontend/video_topic_selected
+2024-10-19 18:47:09,803 - message_broker - DEBUG - Set subscription for topic: Frontend/video_topic_selected
+2024-10-19 18:47:09,803 - message_broker - DEBUG - Added callback for topic: Frontend/video_topic_selected
+2024-10-19 18:47:09,803 - __main__ - INFO - Frontend started
+2024-10-19 18:47:09,803 - message_broker - INFO - Subscribing to topic: Backend/mission_state_update
+2024-10-19 18:47:09,804 - message_broker - DEBUG - Set subscription for topic: Backend/mission_state_update
+2024-10-19 18:47:09,804 - message_broker - DEBUG - Added callback for topic: Backend/mission_state_update
+2024-10-19 18:47:09,804 - message_broker - INFO - Subscribing to topic: Backend/selected_topic_latest_frame
+2024-10-19 18:47:09,804 - message_broker - DEBUG - Set subscription for topic: Backend/selected_topic_latest_frame
+2024-10-19 18:47:09,804 - message_broker - DEBUG - Added callback for topic: Backend/selected_topic_latest_frame
+2024-10-19 18:47:09,804 - message_broker - INFO - Starting message loop
+2024-10-19 18:47:09,804 - message_broker - DEBUG - Waiting for message...
+2024-10-19 18:47:10,805 - __main__ - DEBUG - Backend and frontend still running
+2024-10-19 18:47:11,806 - __main__ - DEBUG - Backend and frontend still running
+2024-10-19 18:47:11,808 - __main__ - DEBUG - Starting Flask app
+2024-10-19 18:47:12,809 - __main__ - DEBUG - Backend and frontend still running
+2024-10-19 18:47:13,810 - __main__ - DEBUG - Backend and frontend still running
+2024-10-19 18:47:14,811 - __main__ - DEBUG - Backend and frontend still running
+2024-10-19 18:47:15,812 - __main__ - DEBUG - Backend and frontend still running
+2024-10-19 18:47:16,813 - __main__ - DEBUG - Backend and frontend still running
+2024-10-19 18:47:17,104 - __main__ - DEBUG - Received POST request: ImmutableMultiDict([('mission_start_button_pressed', '')])
+2024-10-19 18:47:17,105 - __main__ - DEBUG - Handling POST request: ImmutableMultiDict([('mission_start_button_pressed', '')])
+2024-10-19 18:47:17,106 - __main__ - DEBUG - Publishing message to topic 'Frontend/mission_start_button_pressed': {'type': 'mission_start_button_pressed'}
+2024-10-19 18:47:17,107 - message_broker - DEBUG - Publishing message to topic 'Frontend/mission_start_button_pressed': {'type': 'mission_start_button_pressed'}
+2024-10-19 18:47:17,108 - message_broker - DEBUG - Successfully published message to topic 'Frontend/mission_start_button_pressed'
+2024-10-19 18:47:17,108 - __main__ - DEBUG - Successfully published message to topic 'Frontend/mission_start_button_pressed'
+2024-10-19 18:47:17,112 - message_broker - DEBUG - Received message on topic 'Frontend/mission_start_button_pressed': {'type': 'mission_start_button_pressed'}
+2024-10-19 18:47:17,114 - __main__ - DEBUG - Mission start button pressed
+2024-10-19 18:47:17,115 - __main__ - WARNING - Attempted to stop mission without robot connection
+2024-10-19 18:47:17,116 - message_broker - DEBUG - Publishing message to topic 'Backend/error_banner': {'message': 'Robot not connected or mission package not launched'}
+2024-10-19 18:47:17,116 - message_broker - DEBUG - Successfully published message to topic 'Backend/error_banner'
+2024-10-19 18:47:17,117 - message_broker - DEBUG - Waiting for message...
+2024-10-19 18:47:17,816 - __main__ - DEBUG - Backend and frontend still running
+2024-10-19 18:47:18,818 - __main__ - DEBUG - Backend and frontend still running
+2024-10-19 18:47:19,820 - __main__ - DEBUG - Backend and frontend still running
+2024-10-19 18:47:20,823 - __main__ - DEBUG - Backend and frontend still running
+2024-10-19 18:47:21,825 - __main__ - DEBUG - Backend and frontend still running
+2024-10-19 18:47:22,826 - __main__ - DEBUG - Backend and frontend still running
+2024-10-19 18:47:23,828 - __main__ - DEBUG - Backend and frontend still running
+2024-10-19 18:47:24,703 - __main__ - DEBUG - Received POST request: ImmutableMultiDict([('mission_pause_button_pressed', '')])
+2024-10-19 18:47:24,705 - __main__ - DEBUG - Handling POST request: ImmutableMultiDict([('mission_pause_button_pressed', '')])
+2024-10-19 18:47:24,705 - __main__ - DEBUG - Publishing message to topic 'Frontend/mission_pause_button_pressed': {'type': 'mission_pause_button_pressed'}
+2024-10-19 18:47:24,706 - message_broker - DEBUG - Publishing message to topic 'Frontend/mission_pause_button_pressed': {'type': 'mission_pause_button_pressed'}
+2024-10-19 18:47:24,706 - message_broker - DEBUG - Successfully published message to topic 'Frontend/mission_pause_button_pressed'
+2024-10-19 18:47:24,707 - __main__ - DEBUG - Successfully published message to topic 'Frontend/mission_pause_button_pressed'
+2024-10-19 18:47:24,710 - message_broker - DEBUG - Received message on topic 'Frontend/mission_pause_button_pressed': {'type': 'mission_pause_button_pressed'}
+2024-10-19 18:47:24,711 - __main__ - DEBUG - Mission pause button pressed
+2024-10-19 18:47:24,711 - __main__ - WARNING - Attempted to stop mission without robot connection
+2024-10-19 18:47:24,713 - message_broker - DEBUG - Publishing message to topic 'Backend/error_banner': {'message': 'Robot not connected or mission package not launched'}
+2024-10-19 18:47:24,714 - message_broker - DEBUG - Successfully published message to topic 'Backend/error_banner'
+2024-10-19 18:47:24,715 - message_broker - DEBUG - Waiting for message...
+2024-10-19 18:47:24,830 - __main__ - DEBUG - Backend and frontend still running
+2024-10-19 18:47:25,831 - __main__ - DEBUG - Backend and frontend still running
+2024-10-19 18:47:26,638 - __main__ - DEBUG - Received POST request: ImmutableMultiDict([('mission_stop_button_pressed', '')])
+2024-10-19 18:47:26,639 - __main__ - DEBUG - Handling POST request: ImmutableMultiDict([('mission_stop_button_pressed', '')])
+2024-10-19 18:47:26,640 - __main__ - DEBUG - Publishing message to topic 'Frontend/mission_stop_button_pressed': {'type': 'mission_stop_button_pressed'}
+2024-10-19 18:47:26,640 - message_broker - DEBUG - Publishing message to topic 'Frontend/mission_stop_button_pressed': {'type': 'mission_stop_button_pressed'}
+2024-10-19 18:47:26,641 - message_broker - DEBUG - Successfully published message to topic 'Frontend/mission_stop_button_pressed'
+2024-10-19 18:47:26,642 - __main__ - DEBUG - Successfully published message to topic 'Frontend/mission_stop_button_pressed'
+2024-10-19 18:47:26,645 - message_broker - DEBUG - Received message on topic 'Frontend/mission_stop_button_pressed': {'type': 'mission_stop_button_pressed'}
+2024-10-19 18:47:26,647 - __main__ - DEBUG - Mission stop button pressed
+2024-10-19 18:47:26,648 - __main__ - WARNING - Attempted to stop mission without robot connection
+2024-10-19 18:47:26,648 - message_broker - DEBUG - Publishing message to topic 'Backend/error_banner': {'message': 'Robot not connected or mission package not launched'}
+2024-10-19 18:47:26,649 - message_broker - DEBUG - Successfully published message to topic 'Backend/error_banner'
+2024-10-19 18:47:26,649 - message_broker - DEBUG - Waiting for message...
+2024-10-19 18:47:26,833 - __main__ - DEBUG - Backend and frontend still running
+2024-10-19 18:47:27,835 - __main__ - DEBUG - Backend and frontend still running
+2024-10-19 18:47:28,838 - __main__ - DEBUG - Backend and frontend still running
+2024-10-19 18:47:29,839 - __main__ - DEBUG - Backend and frontend still running
+2024-10-19 18:47:30,424 - __main__ - DEBUG - Received POST request: ImmutableMultiDict([('gaze_button_pressed', '')])
+2024-10-19 18:47:30,425 - __main__ - DEBUG - Handling POST request: ImmutableMultiDict([('gaze_button_pressed', '')])
+2024-10-19 18:47:30,426 - __main__ - DEBUG - Publishing message to topic 'Frontend/gaze_enabled_button_pressed': {'type': 'gaze_enabled_button_pressed'}
+2024-10-19 18:47:30,426 - message_broker - DEBUG - Publishing message to topic 'Frontend/gaze_enabled_button_pressed': {'type': 'gaze_enabled_button_pressed'}
+2024-10-19 18:47:30,427 - message_broker - DEBUG - Successfully published message to topic 'Frontend/gaze_enabled_button_pressed'
+2024-10-19 18:47:30,427 - __main__ - DEBUG - Successfully published message to topic 'Frontend/gaze_enabled_button_pressed'
+2024-10-19 18:47:30,430 - message_broker - DEBUG - Received message on topic 'Frontend/gaze_enabled_button_pressed': {'type': 'gaze_enabled_button_pressed'}
+2024-10-19 18:47:30,431 - __main__ - DEBUG - Gaze enabled button pressed
+2024-10-19 18:47:30,432 - message_broker - DEBUG - Publishing message to topic 'Backend/gaze_enabled_state_update': {'gaze_enabled': True}
+2024-10-19 18:47:30,434 - message_broker - DEBUG - Successfully published message to topic 'Backend/gaze_enabled_state_update'
+2024-10-19 18:47:30,435 - message_broker - DEBUG - Waiting for message...
+2024-10-19 18:47:30,842 - __main__ - DEBUG - Backend and frontend still running
+2024-10-19 18:47:31,844 - __main__ - DEBUG - Backend and frontend still running
+2024-10-19 18:47:32,845 - __main__ - DEBUG - Backend and frontend still running
+2024-10-19 18:47:33,848 - __main__ - DEBUG - Backend and frontend still running
+2024-10-19 18:47:34,849 - __main__ - DEBUG - Backend and frontend still running
+2024-10-19 18:47:35,850 - __main__ - DEBUG - Backend and frontend still running
+2024-10-19 18:47:36,851 - __main__ - DEBUG - Backend and frontend still running
+2024-10-19 18:47:37,853 - __main__ - DEBUG - Backend and frontend still running
+2024-10-19 18:47:38,854 - __main__ - DEBUG - Backend and frontend still running
+2024-10-19 18:47:39,856 - __main__ - DEBUG - Backend and frontend still running
+2024-10-19 18:47:40,858 - __main__ - DEBUG - Backend and frontend still running
+2024-10-19 18:47:41,861 - __main__ - DEBUG - Backend and frontend still running
+2024-10-19 18:47:42,863 - __main__ - DEBUG - Backend and frontend still running

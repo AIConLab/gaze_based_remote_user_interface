@@ -37,7 +37,6 @@ if __name__ == "__main__":
     context = zmq.Context()
 
     frontend = context.socket(zmq.XSUB)
-    
     frontend.bind("tcp://*:5559")
     logging.info("Frontend bound to tcp://*:5559")
 
@@ -45,25 +44,7 @@ if __name__ == "__main__":
     backend.bind("tcp://*:5560")
     logging.info("Backend bound to tcp://*:5560")
 
-    poller = zmq.Poller()
-    poller.register(frontend, zmq.POLLIN)
-    poller.register(backend, zmq.POLLIN)
-
-    while True:
-        try:
-            events = dict(poller.poll(1000))
-            if frontend in events:
-                message = frontend.recv_multipart()
-                logging.info(f"Proxy received message from frontend: {message}")
-                backend.send_multipart(message)
-            if backend in events:
-                message = backend.recv_multipart()
-                logging.info(f"Proxy received message from backend: {message}")
-                frontend.send_multipart(message)
-        except KeyboardInterrupt:
-            break
-        except Exception as e:
-            logging.error(f"Error in proxy: {str(e)}")
+    zmq.proxy(frontend, backend)
 
     frontend.close()
     backend.close()
