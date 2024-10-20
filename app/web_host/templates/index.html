@@ -29,13 +29,16 @@
                 <select id="video-topics">
                     <option value="">Select Video Topic</option>
                     {% for topic in available_video_topics %}
-                        <option value="{{ topic }}">{{ topic }}</option>
+                    <option value="{{ topic }}">{{ topic }}</option>
                     {% endfor %}
                 </select>
+
                 <button id="gaze-toggle">{% if gaze_enabled_state %}Disable{% else %}Enable{% endif %} Gaze</button>
+
             </div>
+
             <div id="workspace">
-                <img src="{{ url_for('video_feed') }}" alt="Video Feed">
+                <img id="video-feed" src="" alt="Video Feed" style="max-width: 100%; max-height: 100%; display: block;">
             </div>
         </div>
     </div>

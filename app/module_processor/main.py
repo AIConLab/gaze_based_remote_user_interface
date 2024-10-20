@@ -11,6 +11,7 @@ from datetime import datetime
 
 from message_broker import MessageBroker
 
+
 def setup_logging(enable_logging):
     if enable_logging:
         log_level = logging.DEBUG
@@ -39,7 +40,6 @@ def setup_logging(enable_logging):
     for logger_name in ['WebcamModule', 'VideoRenderer', 'ModuleController', 'ModuleDatapath']:
         logging.getLogger(logger_name).setLevel(log_level)
 
-
 class VideoRenderer:
     def __init__(self, video_frame_rate=15, message_broker: MessageBroker = None):
         self.message_broker = message_broker
@@ -52,9 +52,12 @@ class VideoRenderer:
         self.logger.info("VideoRenderer started")
 
         await self.message_broker.subscribe("ModuleDatapath/selected_topic_latest_frame", self.handle_selected_topic_latest_frame)
+        await self.message_broker.subscribe("ModuleController/selected_video_topic_update", self.clear_latest_frame)
 
         asyncio.create_task(self.publish_latest_frame())
 
+    
+    
     async def handle_selected_topic_latest_frame(self, topic, message):
         compressed_frame = message["frame"]
         np_arr = np.frombuffer(compressed_frame, np.uint8)
@@ -64,11 +67,15 @@ class VideoRenderer:
             # Render apriltags here if needed
             pass
 
+    async def clear_latest_frame(self, topic, message):
+        self.latest_frame = None
+
     async def publish_latest_frame(self):
         while True:
             if self.latest_frame is not None:
                 _, jpeg = cv2.imencode('.jpg', self.latest_frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
                 await self.message_broker.publish("VideoRender/latest_rendered_frame", {'frame': jpeg.tobytes()})
+
             else:
                 blank_frame = np.zeros((480, 640, 3), np.uint8)
                 cv2.putText(blank_frame, "Nothing to show", (25, 120),
@@ -81,7 +88,7 @@ class VideoRenderer:
 class ModuleController:
     def __init__(self, message_broker: MessageBroker):
         self.message_broker = message_broker
-        self.selected_video_topic = None
+        self.selected_video_topic = ""
         self.gaze_enabled = False
         self.logger = logging.getLogger(__name__)
 
@@ -93,8 +100,9 @@ class ModuleController:
     async def handle_selected_video_topic_update(self, topic, message):
         self.logger.debug(f"ModuleController: Received selected video topic update: {message}")
 
-        if isinstance(message, dict) and "topic" in message:
+        if "topic" in message:
             self.selected_video_topic = message["topic"]
+
             await self.message_broker.publish("ModuleController/selected_video_topic_update", {"topic": self.selected_video_topic})
         else:
             self.logger.warning(f"Received invalid message format for selected video topic update: {message}")
@@ -108,8 +116,8 @@ class ModuleController:
 class ModuleDatapath:
     def __init__(self, message_broker: MessageBroker):
         self.message_broker = message_broker
-        self.video_topics = set()
-        self.selected_video_topic = None
+        self.video_topics = set() 
+        self.selected_video_topic = ""
         self.logger = logging.getLogger(__name__)
 
     async def start(self):
@@ -124,6 +132,9 @@ class ModuleDatapath:
             await asyncio.sleep(1)
 
     async def handle_incoming_stream(self, topic, message):
+        """
+        MUX incoming video streams based on selected video topic
+        """
         try:
             if topic not in self.video_topics:
                 self.logger.info(f"New video topic detected: {topic}")
@@ -131,6 +142,7 @@ class ModuleDatapath:
 
             if topic == self.selected_video_topic:
                 await self.message_broker.publish("ModuleDatapath/selected_topic_latest_frame", message)
+
         except Exception as e:
             self.logger.error(f"Error handling incoming stream: {str(e)}")
 
@@ -138,7 +150,6 @@ class ModuleDatapath:
         self.logger.debug(f"ModuleDatapath: Received selected video topic update: {message}")
 
         self.selected_video_topic = message["topic"]
-
 
 
 class WebcamModule:
@@ -188,18 +199,21 @@ class WebcamModule:
             self.logger.debug("Webcam released in destructor")
 
 
-
 async def main(enable_logging):
     setup_logging(enable_logging)
     logger = logging.getLogger(__name__)
     logger.info("Module Processor starting")
 
-    message_broker = MessageBroker(max_queue_size=10)
+    video_renderer_message_broker = MessageBroker(1024)
+    module_controller_message_broker = MessageBroker(1024)
+    module_datapath_message_broker = MessageBroker(1024*4)
+    webcam_module_message_broker = MessageBroker(1024)
 
-    video_renderer = VideoRenderer(video_frame_rate=15, message_broker=message_broker)
-    module_controller = ModuleController(message_broker=message_broker)
-    module_datapath = ModuleDatapath(message_broker=message_broker)
-    webcam_module = WebcamModule(video_frame_rate=15, message_broker=message_broker)
+    video_renderer = VideoRenderer(video_frame_rate=30, message_broker=video_renderer_message_broker)
+    module_controller = ModuleController(message_broker=module_controller_message_broker)
+    module_datapath = ModuleDatapath(message_broker=module_datapath_message_broker)
+
+    webcam_module = WebcamModule(video_frame_rate=30, message_broker=webcam_module_message_broker)
 
     await asyncio.gather(
         video_renderer.start(),

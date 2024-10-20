@@ -1,4 +1,5 @@
-flask
+quart 
+quart-cors
 opencv-python
 msgpack
 zmq

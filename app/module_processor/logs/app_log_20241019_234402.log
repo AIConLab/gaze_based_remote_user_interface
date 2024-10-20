@@ -1,9 +1,0 @@
-2024-10-19 23:44:02,171 - __main__ - INFO - Module Processor starting
-2024-10-19 23:44:02,172 - __main__ - INFO - VideoRenderer started
-2024-10-19 23:44:02,172 - __main__ - INFO - ModuleController started
-2024-10-19 23:44:02,172 - __main__ - INFO - ModuleDataPath started
-2024-10-19 23:44:02,172 - WebcamModule - INFO - WebcamModule started
-2024-10-19 23:44:02,172 - WebcamModule - DEBUG - Video frame rate set to 15
-2024-10-19 23:44:02,292 - WebcamModule - DEBUG - Webcam opened successfully
-2024-10-19 23:44:02,794 - __main__ - INFO - New video topic detected: WebcamModule/latest_frame
-2024-10-19 23:44:22,508 - __main__ - DEBUG - Received gaze enabled state update: {'gaze_enabled': True}

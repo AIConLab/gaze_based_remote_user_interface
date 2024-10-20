@@ -1,17 +1,14 @@
 # web_host/main.py
 
-import asyncio
-import numpy as np
-import cv2
-from flask import Flask, render_template, Response, request, jsonify
 import logging
 import os
 import argparse
 from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor
-import threading
-import time
-import queue
+from quart import Quart, render_template, request, jsonify, Response
+from quart_cors import cors
+import asyncio
+import cv2
+import numpy as np
 
 from enum_definitions import MissionStates, MissionCommandSignals
 from message_broker import MessageBroker
@@ -53,16 +50,16 @@ def setup_logging(enable_logging):
         # Add the file handler to the root logger
         root_logger.addHandler(file_handler)
 
-    # Configure Flask's logger
-    flask_logger = logging.getLogger('werkzeug')
-    flask_logger.handlers = []
-    flask_logger.addHandler(console_handler)
-    if enable_logging:
-        flask_logger.addHandler(file_handler)
-    flask_logger.setLevel(logging.INFO)
+    # Configure Quart's logger
+    quart_logger = logging.getLogger('quart.app')
+    quart_logger.setLevel(logging.DEBUG if enable_logging else logging.INFO)
+    quart_logger.propagate = True
 
-    # Disable Flask's default logging
-    logging.getLogger('werkzeug').disabled = True
+    # Disable Quart's default access log
+    logging.getLogger('quart.serving').setLevel(logging.WARNING)
+
+    return root_logger
+
 
     return root_logger
 
@@ -76,13 +73,11 @@ class Backend:
         self.robot_connected_state = False
 
         self.available_video_topics = []
-        self.latest_frame = None
 
         self.logger = logging.getLogger(__name__)
 
     async def start(self):
         self.logger.info("Backend started")
-
      # Front end subscriptions
         await self.message_broker.subscribe("Frontend/gaze_enabled_button_pressed", self.handle_gaze_enabled_button_pressed)
         await self.message_broker.subscribe("Frontend/mission_start_button_pressed", self.handle_mission_start_button_pressed)
@@ -150,20 +145,17 @@ class Backend:
 
     async def handle_video_topic_selected(self, topic, message):
         self.logger.debug(f"Received video topic selected: {message}")
-        if isinstance(message, dict) and 'topic' in message:
+
+        if 'topic' in message:
             self.selected_video_topic = message['topic']
             # Publish to ModuleController
             await self.message_broker.publish("Backend/selected_video_topic_update", {"topic": self.selected_video_topic})
-        else:
-            self.logger.warning(f"Received invalid message format for video topic selected: {message}")
+
 
     async def handle_latest_frame_of_selected_topic(self, topic, message):
-        try:
-            frame = message['frame']
-            await self.message_broker.publish("Backend/selected_topic_latest_frame", {"frame": frame})
-            self.logger.debug("Published frame to Frontend")
-        except Exception as e:
-            self.logger.error(f"Error handling latest frame: {str(e)}")
+        frame = message['frame']
+
+        await self.message_broker.publish("Backend/selected_topic_latest_frame", {"frame": frame})
 
     async def handle_available_video_topics(self, topic, message):
 
@@ -181,24 +173,11 @@ class Frontend:
     def __init__(self, message_broker):
         self.message_broker = message_broker
         self.current_frame = None
-        self.frame_lock = threading.Lock()
+        self.frame_lock = asyncio.Lock()
+        self.frame_available = asyncio.Event()
         self.state = {}
         self.logger = logging.getLogger(__name__)
-        self.task_queue = queue.Queue()
-        self.loop = asyncio.new_event_loop()
-        threading.Thread(target=self._run_event_loop, daemon=True).start()
 
-    def _run_event_loop(self):
-        asyncio.set_event_loop(self.loop)
-        self.loop.run_until_complete(self._process_queue())
-
-    async def _process_queue(self):
-        while True:
-            try:
-                task = await self.loop.run_in_executor(None, self.task_queue.get, True, 0.1)
-                await task
-            except queue.Empty:
-                await asyncio.sleep(0.1)
 
     async def start(self):
         self.logger.info("Frontend started")
@@ -206,20 +185,47 @@ class Frontend:
         await self.message_broker.subscribe("Backend/available_video_topics_update", self.handle_available_video_topics)
         await self.message_broker.subscribe("Backend/selected_topic_latest_frame", self.handle_video_frame)
 
-    def index(self):
-        return render_template('index.html', **self.state)
+    async def index(self):
+        return await render_template('index.html', **self.state)
 
-    def button_press(self):
-        self.logger.debug(f"Received POST request: {request.form}")
-        self.task_queue.put(self.handle_post_request(request.form))
+    async def button_press(self):
+        form_data = await request.form
+        self.logger.debug(f"Received POST request: {form_data}")
+        await self.handle_post_request(form_data)
         return jsonify({"status": "success"})
 
-    def video_feed(self):
-        return Response(self.render_frames(),
-                        mimetype='multipart/x-mixed-replace; boundary=frame')
-
-    def get_state(self):
+    async def get_state(self):
         return jsonify(self.state)
+
+    async def handle_video_frame(self, topic, message):
+        try:
+            compressed_frame = message['frame']
+            np_arr = np.frombuffer(compressed_frame, np.uint8)
+            frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+            _, buffer = cv2.imencode('.jpg', frame)
+            
+            async with self.frame_lock:
+                self.current_frame = buffer.tobytes()
+            
+            self.frame_available.set()  # Signal that a new frame is available
+
+        except Exception as e:
+            self.logger.error(f"Error processing video frame: {str(e)}")
+
+    async def video_feed(self):
+        self.logger.info("Video feed requested")
+        
+        async def generate():
+            while True:
+                await self.frame_available.wait()  # Wait for a new frame
+                self.frame_available.clear()  # Reset the event
+                
+                async with self.frame_lock:
+                    if self.current_frame:
+                        yield (b'--frame\r\n'
+                               b'Content-Type: image/jpeg\r\n\r\n' + self.current_frame + b'\r\n')
+
+        return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
     async def publish_message(self, topic, message):
         self.logger.debug(f"Publishing message to topic '{topic}': {message}")
@@ -250,17 +256,6 @@ class Frontend:
         except Exception as e:
             self.logger.error(f"Error handling POST request: {str(e)}")
 
-    async def handle_video_frame(self, topic, message):
-        try:
-            compressed_frame = message['frame']
-            np_arr = np.frombuffer(compressed_frame, np.uint8)
-            frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-            with self.frame_lock:
-                self.current_frame = frame
-            self.logger.debug(f"Processed new frame, shape: {frame.shape}")
-        except Exception as e:
-            self.logger.error(f"Error handling video frame: {str(e)}")
-
     async def handle_mission_state_update(self, topic, message):
         if 'mission_state' in message:
             self.state['mission_state'] = message['mission_state']
@@ -270,28 +265,17 @@ class Frontend:
             self.state['available_video_topics'] = message['topics']
 
 
-    def render_frames(self):
-        while True:
-            with self.frame_lock:
-                if self.current_frame is not None:
-                    ret, buffer = cv2.imencode('.jpg', self.current_frame)
-                    frame = buffer.tobytes()
-                    yield (b'--frame\r\n'
-                           b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
-                else:
-                    time.sleep(0.1)  # Short delay if no frame is available
-
-
-
-
 class WebHost:
     def __init__(self, ip: str, port: int):
         self.ip = ip
         self.port = port
-        self.message_broker = MessageBroker(max_queue_size=10)
-        self.backend = Backend(self.message_broker)
-        self.frontend = Frontend(self.message_broker)
-        self.app = Flask(__name__)
+        self.front_end_message_broker = MessageBroker(1024)
+        self.backend_message_broker = MessageBroker(1024)
+
+        self.backend = Backend(self.backend_message_broker)
+        self.frontend = Frontend(self.front_end_message_broker)
+        self.app = Quart(__name__)
+        self.app = cors(self.app)
         self.logger = logging.getLogger(__name__)
 
     async def start(self):
@@ -301,10 +285,10 @@ class WebHost:
         self.setup_routes()
 
     def setup_routes(self):
-        self.app.add_url_rule('/', 'index', self.frontend.index)
-        self.app.add_url_rule('/video_feed', 'video_feed', self.frontend.video_feed)
-        self.app.add_url_rule('/state', 'get_state', self.frontend.get_state)
-        self.app.add_url_rule('/button_press', 'button_press', self.frontend.button_press, methods=['POST'])
+        self.app.route('/')(self.frontend.index)
+        self.app.route('/video_feed')(self.frontend.video_feed)
+        self.app.route('/state')(self.frontend.get_state)
+        self.app.route('/button_press', methods=['POST'])(self.frontend.button_press)
 
     def run(self):
         self.app.run(host=self.ip, port=self.port, debug=False, use_reloader=False)
@@ -319,20 +303,12 @@ async def main(enable_logging):
     web_host = WebHost(ip='0.0.0.0', port=5000)
     await web_host.start()
 
-    # Run Flask in a separate thread
-    loop = asyncio.get_event_loop()
-    executor = ThreadPoolExecutor(max_workers=1)
-    flask_future = loop.run_in_executor(executor, web_host.run)
-
     try:
-        # Keep the main coroutine running
-        while True:
-            await asyncio.sleep(1)
+        await web_host.app.run_task(host=web_host.ip, port=web_host.port)
     except KeyboardInterrupt:
         logger.info("Shutting down...")
     finally:
         await web_host.message_broker.stop()
-        flask_future.cancel()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
