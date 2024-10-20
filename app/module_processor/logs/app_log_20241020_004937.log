@@ -1,0 +1,8 @@
+2024-10-20 00:49:37,028 - __main__ - INFO - Module Processor starting
+2024-10-20 00:49:37,029 - __main__ - INFO - VideoRenderer started
+2024-10-20 00:49:37,030 - __main__ - INFO - ModuleController started
+2024-10-20 00:49:37,030 - __main__ - INFO - ModuleDatapath started
+2024-10-20 00:49:37,030 - WebcamModule - INFO - WebcamModule started
+2024-10-20 00:49:37,030 - WebcamModule - DEBUG - Video frame rate set to 15
+2024-10-20 00:49:37,146 - WebcamModule - DEBUG - Webcam opened successfully
+2024-10-20 00:49:37,645 - __main__ - INFO - New video topic detected: WebcamModule/latest_frame

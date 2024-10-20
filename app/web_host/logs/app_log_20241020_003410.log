@@ -1,0 +1,31 @@
+2024-10-20 00:34:10,679 - __main__ - INFO - Web host starting
+2024-10-20 00:34:10,680 - asyncio - DEBUG - Using selector: EpollSelector
+2024-10-20 00:34:10,683 - __main__ - INFO - Web host starting
+2024-10-20 00:34:10,683 - __main__ - INFO - Backend started
+2024-10-20 00:34:10,683 - __main__ - INFO - Frontend started
+2024-10-20 00:34:11,673 - __main__ - DEBUG - Received available video topics: {'topics': ['WebcamModule/latest_frame']}
+2024-10-20 00:34:12,673 - __main__ - DEBUG - Received available video topics: {'topics': ['WebcamModule/latest_frame']}
+2024-10-20 00:34:13,675 - __main__ - DEBUG - Received available video topics: {'topics': ['WebcamModule/latest_frame']}
+2024-10-20 00:34:14,676 - __main__ - DEBUG - Received available video topics: {'topics': ['WebcamModule/latest_frame']}
+2024-10-20 00:34:15,678 - __main__ - DEBUG - Received available video topics: {'topics': ['WebcamModule/latest_frame']}
+2024-10-20 00:34:16,335 - __main__ - DEBUG - Received POST request: ImmutableMultiDict([('video_topic_selected', 'WebcamModule/latest_frame')])
+2024-10-20 00:34:16,338 - __main__ - DEBUG - Handling POST request: ImmutableMultiDict([('video_topic_selected', 'WebcamModule/latest_frame')])
+2024-10-20 00:34:16,340 - __main__ - DEBUG - Video topic selected: WebcamModule/latest_frame
+2024-10-20 00:34:16,340 - __main__ - DEBUG - Publishing message to topic 'Frontend/video_topic_selected': {'topic': 'WebcamModule/latest_frame'}
+2024-10-20 00:34:16,341 - __main__ - DEBUG - Successfully published message to topic 'Frontend/video_topic_selected'
+2024-10-20 00:34:16,342 - __main__ - DEBUG - Video topic selected
+2024-10-20 00:34:16,342 - __main__ - DEBUG - Received video topic selected: {'topic': 'WebcamModule/latest_frame'}
+2024-10-20 00:34:16,679 - __main__ - DEBUG - Received available video topics: {'topics': ['WebcamModule/latest_frame']}
+2024-10-20 00:34:17,680 - __main__ - DEBUG - Received available video topics: {'topics': ['WebcamModule/latest_frame']}
+2024-10-20 00:34:18,681 - __main__ - DEBUG - Received available video topics: {'topics': ['WebcamModule/latest_frame']}
+2024-10-20 00:34:19,683 - __main__ - DEBUG - Received available video topics: {'topics': ['WebcamModule/latest_frame']}
+2024-10-20 00:34:20,683 - __main__ - DEBUG - Received available video topics: {'topics': ['WebcamModule/latest_frame']}
+2024-10-20 00:34:21,684 - __main__ - DEBUG - Received available video topics: {'topics': ['WebcamModule/latest_frame']}
+2024-10-20 00:34:22,687 - __main__ - DEBUG - Received available video topics: {'topics': ['WebcamModule/latest_frame']}
+2024-10-20 00:34:23,687 - __main__ - DEBUG - Received available video topics: {'topics': ['WebcamModule/latest_frame']}
+2024-10-20 00:34:24,689 - __main__ - DEBUG - Received available video topics: {'topics': ['WebcamModule/latest_frame']}
+2024-10-20 00:34:25,690 - __main__ - DEBUG - Received available video topics: {'topics': ['WebcamModule/latest_frame']}
+2024-10-20 00:34:26,698 - __main__ - DEBUG - Received available video topics: {'topics': ['WebcamModule/latest_frame']}
+2024-10-20 00:34:27,698 - __main__ - DEBUG - Received available video topics: {'topics': ['WebcamModule/latest_frame']}
+2024-10-20 00:34:28,702 - __main__ - DEBUG - Received available video topics: {'topics': ['WebcamModule/latest_frame']}
+2024-10-20 00:34:29,702 - __main__ - DEBUG - Received available video topics: {'topics': ['WebcamModule/latest_frame']}

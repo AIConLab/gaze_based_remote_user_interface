@@ -1,0 +1,11 @@
+2024-10-20 01:00:49,737 - __main__ - INFO - Web host starting
+2024-10-20 01:00:49,738 - asyncio - DEBUG - Using selector: EpollSelector
+2024-10-20 01:00:49,740 - __main__ - INFO - Web host starting
+2024-10-20 01:00:49,740 - __main__ - INFO - Backend started
+2024-10-20 01:00:49,740 - __main__ - INFO - Frontend started
+2024-10-20 01:01:00,207 - __main__ - DEBUG - Received POST request: ImmutableMultiDict([('video_topic_selected', 'WebcamModule/latest_frame')])
+2024-10-20 01:01:00,210 - __main__ - DEBUG - Handling POST request: ImmutableMultiDict([('video_topic_selected', 'WebcamModule/latest_frame')])
+2024-10-20 01:01:00,211 - __main__ - DEBUG - Video topic selected: WebcamModule/latest_frame
+2024-10-20 01:01:00,212 - __main__ - DEBUG - Publishing message to topic 'Frontend/video_topic_selected': {'topic': 'WebcamModule/latest_frame'}
+2024-10-20 01:01:00,212 - __main__ - DEBUG - Successfully published message to topic 'Frontend/video_topic_selected'
+2024-10-20 01:01:00,213 - __main__ - DEBUG - Received video topic selected: {'topic': 'WebcamModule/latest_frame'}

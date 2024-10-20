@@ -21,7 +21,7 @@ from logging.handlers import RotatingFileHandler
 def setup_logging(enable_logging):
     # Set up root logger
     root_logger = logging.getLogger()
-    root_logger.setLevel(logging.INFO)
+    root_logger.setLevel(logging.DEBUG if enable_logging else logging.INFO)
 
     # Remove any existing handlers
     for handler in root_logger.handlers[:]:
@@ -29,7 +29,7 @@ def setup_logging(enable_logging):
 
     # Create a StreamHandler for console output
     console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.INFO)
+    console_handler.setLevel(logging.DEBUG if enable_logging else logging.INFO)
 
     # Create a formatter and set it for the console handler
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -64,6 +64,7 @@ def setup_logging(enable_logging):
     # Disable Flask's default logging
     logging.getLogger('werkzeug').disabled = True
 
+    return root_logger
 
 
 class Backend:
@@ -90,16 +91,17 @@ class Backend:
         await self.message_broker.subscribe("Frontend/video_topic_selected", self.handle_video_topic_selected)
 
         # Video Renderer subscriptions
-        #await self.message_broker.subscribe("VideoRender/latest_rendered_frame", self.handle_latest_frame_of_selected_topic)
+        await self.message_broker.subscribe("VideoRender/latest_rendered_frame", self.handle_latest_frame_of_selected_topic)
 
         # ModuleDatapath subscriptions
-        #await self.message_broker.subscribe("ModuleDatapath/available_video_topics", self.handle_available_video_topics)
+        await self.message_broker.subscribe("ModuleDatapath/available_video_topics", self.handle_available_video_topics)
 
         # MissionManager subscriptions
-        #await self.message_broker.subscribe("MissionManager/mission_state_update", self.handle_mission_state_update)
+        await self.message_broker.subscribe("MissionManager/mission_state_update", self.handle_mission_state_update)
 
     async def handle_gaze_enabled_button_pressed(self, topic, message):
         self.logger.info("Gaze enabled button pressed")
+
         self.gaze_enabled_state = not self.gaze_enabled_state
 
         await self.message_broker.publish("Backend/gaze_enabled_state_update", {"gaze_enabled": self.gaze_enabled_state})
@@ -147,10 +149,7 @@ class Backend:
         await self.message_broker.publish("MissionManager/mission_command", {"command": MissionCommandSignals.MISSION_ABORT})
 
     async def handle_video_topic_selected(self, topic, message):
-        self.logger.debug("Video topic selected")
-        """
-        Callback for when a video topic is selected by the user, publishes the selected topic to VideoManager and Frontend
-        """
+        self.logger.debug(f"Received video topic selected: {message}")
         if isinstance(message, dict) and 'topic' in message:
             self.selected_video_topic = message['topic']
             # Publish to ModuleController
@@ -161,13 +160,13 @@ class Backend:
     async def handle_latest_frame_of_selected_topic(self, topic, message):
         try:
             frame = message['frame']
-            self.logger.debug(f"Publishing video frame: {len(frame)} bytes")
             await self.message_broker.publish("Backend/selected_topic_latest_frame", {"frame": frame})
-
+            self.logger.debug("Published frame to Frontend")
         except Exception as e:
             self.logger.error(f"Error handling latest frame: {str(e)}")
 
     async def handle_available_video_topics(self, topic, message):
+
         if 'topics' in message:
             self.available_video_topics = message['topics']
             await self.message_broker.publish("Backend/available_video_topics_update", {"topics": self.available_video_topics})
@@ -182,7 +181,7 @@ class Frontend:
     def __init__(self, message_broker):
         self.message_broker = message_broker
         self.current_frame = None
-        self.frame_available = threading.Event()
+        self.frame_lock = threading.Lock()
         self.state = {}
         self.logger = logging.getLogger(__name__)
         self.task_queue = queue.Queue()
@@ -204,6 +203,7 @@ class Frontend:
     async def start(self):
         self.logger.info("Frontend started")
         await self.message_broker.subscribe("Backend/mission_state_update", self.handle_mission_state_update)
+        await self.message_broker.subscribe("Backend/available_video_topics_update", self.handle_available_video_topics)
         await self.message_broker.subscribe("Backend/selected_topic_latest_frame", self.handle_video_frame)
 
     def index(self):
@@ -213,6 +213,22 @@ class Frontend:
         self.logger.debug(f"Received POST request: {request.form}")
         self.task_queue.put(self.handle_post_request(request.form))
         return jsonify({"status": "success"})
+
+    def video_feed(self):
+        return Response(self.render_frames(),
+                        mimetype='multipart/x-mixed-replace; boundary=frame')
+
+    def get_state(self):
+        return jsonify(self.state)
+
+    async def publish_message(self, topic, message):
+        self.logger.debug(f"Publishing message to topic '{topic}': {message}")
+        try:
+            await self.message_broker.publish(topic, message)
+            self.logger.debug(f"Successfully published message to topic '{topic}'")
+        except Exception as e:
+            self.logger.error(f"Error publishing message to topic '{topic}': {str(e)}")
+            raise
 
     async def handle_post_request(self, form):
         self.logger.debug(f"Handling POST request: {form}")
@@ -234,43 +250,38 @@ class Frontend:
         except Exception as e:
             self.logger.error(f"Error handling POST request: {str(e)}")
 
-    def video_feed(self):
-        return Response(self.render_frames(),
-                        mimetype='multipart/x-mixed-replace; boundary=frame')
-
-    def get_state(self):
-        return jsonify(self.state)
-
-    async def publish_message(self, topic, message):
-        self.logger.debug(f"Publishing message to topic '{topic}': {message}")
-        try:
-            await self.message_broker.publish(topic, message)
-            self.logger.debug(f"Successfully published message to topic '{topic}'")
-        except Exception as e:
-            self.logger.error(f"Error publishing message to topic '{topic}': {str(e)}")
-            raise
-
     async def handle_video_frame(self, topic, message):
-        if isinstance(message, dict) and "frame" in message:
+        try:
             compressed_frame = message['frame']
             np_arr = np.frombuffer(compressed_frame, np.uint8)
-            self.current_frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-            self.frame_available.set()
+            frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+            with self.frame_lock:
+                self.current_frame = frame
+            self.logger.debug(f"Processed new frame, shape: {frame.shape}")
+        except Exception as e:
+            self.logger.error(f"Error handling video frame: {str(e)}")
 
     async def handle_mission_state_update(self, topic, message):
         if 'mission_state' in message:
             self.state['mission_state'] = message['mission_state']
 
+    async def handle_available_video_topics(self, topic, message):
+        if 'topics' in message:
+            self.state['available_video_topics'] = message['topics']
+
+
     def render_frames(self):
         while True:
-            if self.frame_available.is_set():
-                ret, buffer = cv2.imencode('.jpg', self.current_frame)
-                frame = buffer.tobytes()
-                yield (b'--frame\r\n'
-                       b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
-                self.frame_available.clear()
-            else:
-                time.sleep(0.1)
+            with self.frame_lock:
+                if self.current_frame is not None:
+                    ret, buffer = cv2.imencode('.jpg', self.current_frame)
+                    frame = buffer.tobytes()
+                    yield (b'--frame\r\n'
+                           b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+                else:
+                    time.sleep(0.1)  # Short delay if no frame is available
+
+
 
 
 class WebHost:
@@ -297,6 +308,8 @@ class WebHost:
 
     def run(self):
         self.app.run(host=self.ip, port=self.port, debug=False, use_reloader=False)
+
+
 
 async def main(enable_logging):
     setup_logging(enable_logging)

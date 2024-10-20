@@ -1,0 +1,16 @@
+2024-10-20 00:57:03,695 - __main__ - INFO - Web host starting
+2024-10-20 00:57:03,695 - asyncio - DEBUG - Using selector: EpollSelector
+2024-10-20 00:57:03,697 - __main__ - INFO - Web host starting
+2024-10-20 00:57:03,697 - __main__ - INFO - Backend started
+2024-10-20 00:57:03,697 - __main__ - INFO - Frontend started
+2024-10-20 00:57:12,360 - __main__ - DEBUG - Received POST request: ImmutableMultiDict([('video_topic_selected', 'WebcamModule/latest_frame')])
+2024-10-20 00:57:12,365 - __main__ - DEBUG - Handling POST request: ImmutableMultiDict([('video_topic_selected', 'WebcamModule/latest_frame')])
+2024-10-20 00:57:12,366 - __main__ - DEBUG - Video topic selected: WebcamModule/latest_frame
+2024-10-20 00:57:12,366 - __main__ - DEBUG - Publishing message to topic 'Frontend/video_topic_selected': {'topic': 'WebcamModule/latest_frame'}
+2024-10-20 00:57:12,367 - __main__ - DEBUG - Successfully published message to topic 'Frontend/video_topic_selected'
+2024-10-20 00:57:12,370 - __main__ - DEBUG - Received video topic selected: {'topic': 'WebcamModule/latest_frame'}
+2024-10-20 00:57:23,788 - __main__ - DEBUG - Received POST request: ImmutableMultiDict([('gaze_button_pressed', 'true')])
+2024-10-20 00:57:23,852 - __main__ - DEBUG - Handling POST request: ImmutableMultiDict([('gaze_button_pressed', 'true')])
+2024-10-20 00:57:23,854 - __main__ - DEBUG - Publishing message to topic 'Frontend/gaze_enabled_button_pressed': {'type': 'gaze_enabled_button_pressed'}
+2024-10-20 00:57:23,856 - __main__ - DEBUG - Successfully published message to topic 'Frontend/gaze_enabled_button_pressed'
+2024-10-20 00:57:23,857 - __main__ - INFO - Gaze enabled button pressed

@@ -4,8 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Robot Control Interface</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
     <div class="container">
@@ -40,40 +39,6 @@
             </div>
         </div>
     </div>
-
-    <script>
-        $(document).ready(function() {
-            function sendButtonPress(buttonType) {
-                $.post('/button_press', { [buttonType]: '' }, function(response) {
-                    console.log('Button press response:', response);
-                });
-            }
-
-            $('#mission-start').click(function() { sendButtonPress('mission_start_button_pressed'); });
-            $('#mission-pause').click(function() { sendButtonPress('mission_pause_button_pressed'); });
-            $('#mission-stop').click(function() { sendButtonPress('mission_stop_button_pressed'); });
-            $('#gaze-toggle').click(function() { sendButtonPress('gaze_button_pressed'); });
-
-            $('#video-topics').change(function() {
-                var selectedTopic = $(this).val();
-                if (selectedTopic) {
-                    $.post('/button_press', { video_topic_selected: selectedTopic }, function(response) {
-                        console.log('Video topic selection response:', response);
-                    });
-                }
-            });
-
-            // Periodically update the page state
-            function updateState() {
-                $.get('/state', function(data) {
-                    $('#connection-status').text(data.robot_connected_state ? 'Connected' : 'Disconnected');
-                    $('#gaze-toggle').text((data.gaze_enabled_state ? 'Disable' : 'Enable') + ' Gaze');
-                    // Update other state elements as needed
-                });
-            }
-
-            setInterval(updateState, 1000); // Update every second
-        });
-    </script>
+    <script src="{{ url_for('static', filename='event_handler.js') }}"></script>
 </body>
 </html>

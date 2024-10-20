@@ -1,0 +1,32 @@
+2024-10-19 23:47:01,839 - __main__ - INFO - Module Processor starting
+2024-10-19 23:47:01,840 - __main__ - INFO - VideoRenderer started
+2024-10-19 23:47:01,840 - __main__ - INFO - ModuleController started
+2024-10-19 23:47:01,840 - __main__ - INFO - ModuleDatapath started
+2024-10-19 23:47:01,840 - WebcamModule - INFO - WebcamModule started
+2024-10-19 23:47:01,840 - WebcamModule - DEBUG - Video frame rate set to 15
+2024-10-19 23:47:01,871 - WebcamModule - DEBUG - Webcam opened successfully
+2024-10-19 23:47:01,873 - __main__ - DEBUG - Available video topics: set()
+2024-10-19 23:47:02,418 - __main__ - INFO - New video topic detected: WebcamModule/latest_frame
+2024-10-19 23:47:02,874 - __main__ - DEBUG - Available video topics: {'WebcamModule/latest_frame'}
+2024-10-19 23:47:03,879 - __main__ - DEBUG - Available video topics: {'WebcamModule/latest_frame'}
+2024-10-19 23:47:04,882 - __main__ - DEBUG - Available video topics: {'WebcamModule/latest_frame'}
+2024-10-19 23:47:05,883 - __main__ - DEBUG - Available video topics: {'WebcamModule/latest_frame'}
+2024-10-19 23:47:06,891 - __main__ - DEBUG - Available video topics: {'WebcamModule/latest_frame'}
+2024-10-19 23:47:07,892 - __main__ - DEBUG - Available video topics: {'WebcamModule/latest_frame'}
+2024-10-19 23:47:08,894 - __main__ - DEBUG - Available video topics: {'WebcamModule/latest_frame'}
+2024-10-19 23:47:09,899 - __main__ - DEBUG - Available video topics: {'WebcamModule/latest_frame'}
+2024-10-19 23:47:10,901 - __main__ - DEBUG - Available video topics: {'WebcamModule/latest_frame'}
+2024-10-19 23:47:11,903 - __main__ - DEBUG - Available video topics: {'WebcamModule/latest_frame'}
+2024-10-19 23:47:12,905 - __main__ - DEBUG - Available video topics: {'WebcamModule/latest_frame'}
+2024-10-19 23:47:13,906 - __main__ - DEBUG - Available video topics: {'WebcamModule/latest_frame'}
+2024-10-19 23:47:14,909 - __main__ - DEBUG - Available video topics: {'WebcamModule/latest_frame'}
+2024-10-19 23:47:15,911 - __main__ - DEBUG - Available video topics: {'WebcamModule/latest_frame'}
+2024-10-19 23:47:16,914 - __main__ - DEBUG - Available video topics: {'WebcamModule/latest_frame'}
+2024-10-19 23:47:17,916 - __main__ - DEBUG - Available video topics: {'WebcamModule/latest_frame'}
+2024-10-19 23:47:18,917 - __main__ - DEBUG - Available video topics: {'WebcamModule/latest_frame'}
+2024-10-19 23:47:19,922 - __main__ - DEBUG - Available video topics: {'WebcamModule/latest_frame'}
+2024-10-19 23:47:20,923 - __main__ - DEBUG - Available video topics: {'WebcamModule/latest_frame'}
+2024-10-19 23:47:21,924 - __main__ - DEBUG - Available video topics: {'WebcamModule/latest_frame'}
+2024-10-19 23:47:22,925 - __main__ - DEBUG - Available video topics: {'WebcamModule/latest_frame'}
+2024-10-19 23:47:23,927 - __main__ - DEBUG - Available video topics: {'WebcamModule/latest_frame'}
+2024-10-19 23:47:24,930 - __main__ - DEBUG - Available video topics: {'WebcamModule/latest_frame'}
