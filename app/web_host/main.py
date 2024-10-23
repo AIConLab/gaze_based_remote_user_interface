@@ -176,7 +176,7 @@ class Frontend:
     def __init__(self, message_broker):
         self.message_broker = message_broker
         self.current_frame = None
-        self.frame_buffer = asyncio.Queue(maxsize=10)
+        self.frame_buffer = asyncio.Queue(maxsize=5)
         self.frame_lock = asyncio.Lock()
         self.frame_available = asyncio.Event()
         self.state = {}
@@ -203,15 +203,15 @@ class Frontend:
 
     async def handle_video_frame(self, topic, message):
         try:
-            # Just put the raw frame in the buffer
-            if len(message['frame']) > 0:  # Basic check to ensure frame isn't empty
-                # If buffer is full, remove oldest frame
-                if self.frame_buffer.full():
-                    try:
-                        self.frame_buffer.get_nowait()
-                    except asyncio.QueueEmpty:
-                        pass
-                await self.frame_buffer.put(message['frame'])
+            # If buffer is full, remove oldest frame
+            if self.frame_buffer.full():
+                try:
+                    self.frame_buffer.get_nowait()
+                except asyncio.QueueEmpty:
+                    pass
+
+            await self.frame_buffer.put(message['frame'])
+
         except Exception as e:
             self.logger.error(f"Error handling video frame: {str(e)}")
 
@@ -219,25 +219,19 @@ class Frontend:
         self.logger.info("Video feed requested")
 
         async def generate():
-            try:
-                while True:
-                    try:
-                        # Wait for frame with timeout
-                        frame_data = await asyncio.wait_for(self.frame_buffer.get(), timeout=1.0)
-                        
-                        yield (b'--frame\r\n'
-                               b'Content-Type: image/jpeg\r\n\r\n' + frame_data + b'\r\n')
+            while True:
+                try:
+                    # Wait for frame with timeout
+                    frame_data = await asyncio.wait_for(self.frame_buffer.get(), timeout=1.0)
+
                     
-                    except asyncio.TimeoutError:
-                        # Just continue waiting for next frame
-                        continue
-                        
-            except asyncio.CancelledError:
-                self.logger.info("Video feed generator cancelled")
-                raise
-            except Exception as e:
-                self.logger.error(f"Error in video feed generator: {str(e)}")
-                raise
+                    yield (b'--frame\r\n'
+                            b'Content-Type: image/jpeg\r\n\r\n' + frame_data + b'\r\n')
+                
+                except asyncio.TimeoutError:
+                    # Just continue waiting for next frame
+                    continue
+                    
 
         response = await make_response(
             generate(),
@@ -275,6 +269,7 @@ class Frontend:
                 selected_topic = form.get("video_topic_selected")
                 self.logger.debug(f"Video topic selected: {selected_topic}")
                 await self.publish_message("Frontend/video_topic_selected", {'topic': selected_topic})
+
             else:
                 self.logger.warning(f"Unknown POST request: {form}")
         except Exception as e:

@@ -42,55 +42,123 @@ def setup_logging(enable_logging):
 
 
 class VideoRenderer:
-    def __init__(self, video_fps=15, output_width=1280, output_height=720, message_broker: MessageBroker = None):
+    def __init__(self,
+                  video_fps=15, 
+                  output_width=1280, 
+                  output_height=720, 
+                  message_broker: MessageBroker = None,
+                  max_queue_size=3  # Buffer up to 3 frames
+                  ):
         self.message_broker = message_broker
         self.render_apriltags = False
 
+        self.image_quality = 70
         self.video_fps = video_fps
         self.output_width = output_width
         self.output_height = output_height
-        self.latest_frame = None
+        
+        # Frame synchronization
+        self.frame_lock = asyncio.Lock()
+        self.frame_queue = asyncio.Queue(maxsize=max_queue_size)
+        self.topic_change_event = asyncio.Event()
+        self.current_topic = ""
+        
         self.logger = logging.getLogger(__name__)
-        self.jpeg_quality = 70
 
     async def start(self):
         self.logger.info("VideoRenderer started")
 
-        await self.message_broker.subscribe("ModuleDatapath/selected_topic_latest_frame", self.handle_selected_topic_latest_frame)
-        await self.message_broker.subscribe("ModuleController/selected_video_topic_update", self.clear_latest_frame)
+        await self.message_broker.subscribe("ModuleDatapath/selected_topic_latest_frame", 
+                                          self.handle_selected_topic_latest_frame)
+        await self.message_broker.subscribe("ModuleController/selected_video_topic_update", 
+                                          self.handle_topic_update)
 
+        # Start the publishing task
         asyncio.create_task(self.publish_latest_frame())
 
     async def handle_selected_topic_latest_frame(self, topic, message):
-        compressed_frame = message["frame"]
-        np_arr = np.frombuffer(compressed_frame, np.uint8)
-        latest_frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+        try:
+            if not self.topic_change_event.is_set():
+                compressed_frame = message["frame"]
+                np_arr = np.frombuffer(compressed_frame, np.uint8)
+                
+                # Decode frame for processing
+                latest_frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
 
-        self.latest_frame = latest_frame
+                # Try to add to queue, drop oldest frame if full
+                try:
+                    self.frame_queue.put_nowait(latest_frame)
+                except asyncio.QueueFull:
+                    try:
+                        self.frame_queue.get_nowait()  # Remove oldest frame
+                        await self.frame_queue.put(latest_frame)  # Add new frame
+                    except asyncio.QueueEmpty:
+                        pass  # Queue was emptied by another task
 
+        except Exception as e:
+            self.logger.error(f"Error handling incoming frame: {str(e)}")
 
-        # Render apriltags here if needed
-        if self.render_apriltags:
-            pass
-
-    async def clear_latest_frame(self, topic, message):
-        self.logger.debug(f"Clearing latest frame")
-        self.latest_frame = None
+    async def handle_topic_update(self, topic, message):
+        self.logger.debug(f"Topic update received: {message}")
+        
+        async with self.frame_lock:
+            self.topic_change_event.set()  # Signal topic change
+            new_topic = message.get("topic", "")
+            
+            if new_topic != self.current_topic:
+                self.current_topic = new_topic
+                # Clear existing frames
+                while not self.frame_queue.empty():
+                    try:
+                        self.frame_queue.get_nowait()
+                    except asyncio.QueueEmpty:
+                        break
+                
+                await asyncio.sleep(0.1)  # Small delay for synchronization
+                self.topic_change_event.clear()  # Clear topic change flag
 
     async def publish_latest_frame(self):
+        """Publishes frames to the message broker"""
+        blank_frame = None  # Cache blank frame
+        switching_frame = None  # Cache switching frame
+        
         try:
             while True:
-                if self.latest_frame is not None:
-                    _, jpeg = cv2.imencode('.jpg', self.latest_frame, [cv2.IMWRITE_JPEG_QUALITY, self.jpeg_quality])
-                    await self.message_broker.publish("VideoRender/latest_rendered_frame", {'frame': jpeg.tobytes()})
-                else:
-                    blank_frame = np.zeros((self.output_height, self.output_width, 3), np.uint8)
-                    cv2.putText(blank_frame, "No frame available", (self.output_width//2 - 100, self.output_height//2), 
-                                cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-                    _, jpeg = cv2.imencode('.jpg', blank_frame, [cv2.IMWRITE_JPEG_QUALITY, self.jpeg_quality])
-                    await self.message_broker.publish("VideoRender/latest_rendered_frame", {'frame': jpeg.tobytes()})
-                
-                # Change sleep time to match FPS
+                async with self.frame_lock:
+                    if self.topic_change_event.is_set():
+                        # Create switching frame if not cached
+                        if switching_frame is None:
+                            switching_frame = np.zeros((self.output_height, self.output_width, 3), np.uint8)
+                            cv2.putText(switching_frame, "Switching video feed...", 
+                                      (self.output_width//2 - 100, self.output_height//2),
+                                      cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+                        
+                        frame_to_publish = switching_frame
+                        status = "switching"
+                        
+                    elif self.frame_queue.empty():
+                        # Create blank frame if not cached
+                        if blank_frame is None:
+                            blank_frame = np.zeros((self.output_height, self.output_width, 3), np.uint8)
+                            cv2.putText(blank_frame, "No video feed selected", 
+                                      (self.output_width//2 - 100, self.output_height//2),
+                                      cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+                        
+                        frame_to_publish = blank_frame
+                        status = "blank"
+                        
+                    else:
+                        frame_to_publish = await self.frame_queue.get()
+                        status = "latest"
+
+                    # Encode frame
+                    _, encoded_out = cv2.imencode('.jpeg', frame_to_publish, 
+                                                [int(cv2.IMWRITE_JPEG_QUALITY), self.image_quality])
+                    
+                    await self.message_broker.publish("VideoRender/latest_rendered_frame", 
+                                                    {'frame': encoded_out.tobytes()})
+                    
+
                 await asyncio.sleep(1/self.video_fps)
 
         except Exception as e:
@@ -110,6 +178,7 @@ class VideoRenderer:
         return cv2.resize(frame, (new_width, new_height))
 
     async def stop(self):
+        self.topic_change_event.set()  # Signal stop
         self.message_broker.stop()
 
 
@@ -132,6 +201,7 @@ class ModuleController:
             self.selected_video_topic = message["topic"]
 
             await self.message_broker.publish("ModuleController/selected_video_topic_update", {"topic": self.selected_video_topic})
+            
         else:
             self.logger.warning(f"Received invalid message format for selected video topic update: {message}")
 
@@ -187,13 +257,19 @@ class ModuleDatapath:
 
 
 class WebcamModule:
-    def __init__(self, video_fps=15, message_broker: MessageBroker = None, jpeg_quality=70, output_width=1280, output_height=720):
+    def __init__(self,
+                 video_fps=15, 
+                 message_broker: MessageBroker = None, 
+                 output_width=1280, 
+                 output_height=720, 
+                 image_quality=70
+                 ):
         self.message_broker = message_broker
         self.logger = logging.getLogger('WebcamModule')
 
+        self.image_quality = image_quality
         self.cap = None
         self.video_fps = video_fps
-        self.jpeg_quality = jpeg_quality
         self.output_width = output_width
         self.output_height = output_height
 
@@ -225,10 +301,11 @@ class WebcamModule:
             while True:
                 ret, frame = self.cap.read()
                 if ret:
-                    _, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                    _, encoded_out = cv2.imencode('.jpeg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), self.image_quality])
+                    
                     await self.message_broker.publish("WebcamModule/latest_frame", 
-                                                      {"topic": "WebcamModule", 
-                                                       "frame": jpeg.tobytes()})
+                                                  {"topic": "WebcamModule", 
+                                                   "frame": encoded_out.tobytes()})
                 else:
                     self.logger.warning("Failed to capture frame from webcam")
 
@@ -236,6 +313,7 @@ class WebcamModule:
 
         except Exception as e:
             self.logger.error(f"Error in WebcamModule: {str(e)}")
+            raise e  # Add raise to help with debugging
 
         finally:
             self.stop()

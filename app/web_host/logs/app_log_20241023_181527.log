@@ -1,0 +1,100 @@
+2024-10-23 18:15:27,519 - __main__ - INFO - Web host starting
+2024-10-23 18:15:27,521 - __main__ - INFO - Web host starting
+2024-10-23 18:15:27,522 - __main__ - INFO - Backend started
+2024-10-23 18:15:27,522 - __main__ - INFO - Frontend started
+2024-10-23 18:15:27,525 - hypercorn.error - INFO - Running on http://0.0.0.0:5000 (CTRL + C to quit)
+2024-10-23 18:15:32,319 - __main__ - INFO - Video feed requested
+2024-10-23 18:15:33,992 - __main__ - DEBUG - Received POST request: ImmutableMultiDict([('video_topic_selected', 'WebcamModule/latest_frame')])
+2024-10-23 18:15:33,992 - __main__ - DEBUG - Handling POST request: ImmutableMultiDict([('video_topic_selected', 'WebcamModule/latest_frame')])
+2024-10-23 18:15:33,992 - __main__ - DEBUG - Video topic selected: WebcamModule/latest_frame
+2024-10-23 18:15:33,992 - __main__ - DEBUG - Publishing message to topic 'Frontend/video_topic_selected': {'topic': 'WebcamModule/latest_frame'}
+2024-10-23 18:15:33,992 - __main__ - DEBUG - Successfully published message to topic 'Frontend/video_topic_selected'
+2024-10-23 18:15:33,994 - __main__ - DEBUG - Received video topic selected: {'topic': 'WebcamModule/latest_frame'}
+2024-10-23 18:15:34,000 - __main__ - INFO - Video feed requested
+2024-10-23 18:15:39,237 - __main__ - DEBUG - Received POST request: ImmutableMultiDict([('video_topic_selected', '')])
+2024-10-23 18:15:39,237 - __main__ - DEBUG - Handling POST request: ImmutableMultiDict([('video_topic_selected', '')])
+2024-10-23 18:15:39,238 - __main__ - DEBUG - Video topic selected: 
+2024-10-23 18:15:39,238 - __main__ - DEBUG - Publishing message to topic 'Frontend/video_topic_selected': {'topic': ''}
+2024-10-23 18:15:39,239 - __main__ - DEBUG - Successfully published message to topic 'Frontend/video_topic_selected'
+2024-10-23 18:15:39,243 - __main__ - DEBUG - Received video topic selected: {'topic': ''}
+2024-10-23 18:15:39,257 - __main__ - INFO - Video feed requested
+2024-10-23 18:15:52,401 - __main__ - DEBUG - Received POST request: ImmutableMultiDict([('video_topic_selected', 'WebcamModule/latest_frame')])
+2024-10-23 18:15:52,401 - __main__ - DEBUG - Handling POST request: ImmutableMultiDict([('video_topic_selected', 'WebcamModule/latest_frame')])
+2024-10-23 18:15:52,401 - __main__ - DEBUG - Video topic selected: WebcamModule/latest_frame
+2024-10-23 18:15:52,401 - __main__ - DEBUG - Publishing message to topic 'Frontend/video_topic_selected': {'topic': 'WebcamModule/latest_frame'}
+2024-10-23 18:15:52,402 - __main__ - DEBUG - Successfully published message to topic 'Frontend/video_topic_selected'
+2024-10-23 18:15:52,404 - __main__ - DEBUG - Received video topic selected: {'topic': 'WebcamModule/latest_frame'}
+2024-10-23 18:15:52,408 - __main__ - INFO - Video feed requested
+2024-10-23 18:15:55,411 - __main__ - DEBUG - Received POST request: ImmutableMultiDict([('video_topic_selected', '')])
+2024-10-23 18:15:55,412 - __main__ - DEBUG - Handling POST request: ImmutableMultiDict([('video_topic_selected', '')])
+2024-10-23 18:15:55,412 - __main__ - DEBUG - Video topic selected: 
+2024-10-23 18:15:55,412 - __main__ - DEBUG - Publishing message to topic 'Frontend/video_topic_selected': {'topic': ''}
+2024-10-23 18:15:55,412 - __main__ - DEBUG - Successfully published message to topic 'Frontend/video_topic_selected'
+2024-10-23 18:15:55,414 - __main__ - DEBUG - Received video topic selected: {'topic': ''}
+2024-10-23 18:15:55,423 - __main__ - INFO - Video feed requested
+2024-10-23 18:16:00,590 - __main__ - INFO - Video feed requested
+2024-10-23 18:16:13,623 - __main__ - INFO - Video feed requested
+2024-10-23 18:16:19,865 - __main__ - DEBUG - Received POST request: ImmutableMultiDict([('video_topic_selected', 'WebcamModule/latest_frame')])
+2024-10-23 18:16:19,866 - __main__ - DEBUG - Handling POST request: ImmutableMultiDict([('video_topic_selected', 'WebcamModule/latest_frame')])
+2024-10-23 18:16:19,866 - __main__ - DEBUG - Video topic selected: WebcamModule/latest_frame
+2024-10-23 18:16:19,866 - __main__ - DEBUG - Publishing message to topic 'Frontend/video_topic_selected': {'topic': 'WebcamModule/latest_frame'}
+2024-10-23 18:16:19,867 - __main__ - DEBUG - Successfully published message to topic 'Frontend/video_topic_selected'
+2024-10-23 18:16:19,869 - __main__ - DEBUG - Received video topic selected: {'topic': 'WebcamModule/latest_frame'}
+2024-10-23 18:16:19,886 - __main__ - INFO - Video feed requested
+2024-10-23 18:16:50,893 - __main__ - DEBUG - Received POST request: ImmutableMultiDict([('video_topic_selected', '')])
+2024-10-23 18:16:50,893 - __main__ - DEBUG - Handling POST request: ImmutableMultiDict([('video_topic_selected', '')])
+2024-10-23 18:16:50,894 - __main__ - DEBUG - Video topic selected: 
+2024-10-23 18:16:50,894 - __main__ - DEBUG - Publishing message to topic 'Frontend/video_topic_selected': {'topic': ''}
+2024-10-23 18:16:50,894 - __main__ - DEBUG - Successfully published message to topic 'Frontend/video_topic_selected'
+2024-10-23 18:16:50,897 - __main__ - DEBUG - Received video topic selected: {'topic': ''}
+2024-10-23 18:16:50,912 - __main__ - INFO - Video feed requested
+2024-10-23 18:17:01,562 - __main__ - DEBUG - Received POST request: ImmutableMultiDict([('video_topic_selected', 'WebcamModule/latest_frame')])
+2024-10-23 18:17:01,562 - __main__ - DEBUG - Handling POST request: ImmutableMultiDict([('video_topic_selected', 'WebcamModule/latest_frame')])
+2024-10-23 18:17:01,562 - __main__ - DEBUG - Video topic selected: WebcamModule/latest_frame
+2024-10-23 18:17:01,563 - __main__ - DEBUG - Publishing message to topic 'Frontend/video_topic_selected': {'topic': 'WebcamModule/latest_frame'}
+2024-10-23 18:17:01,563 - __main__ - DEBUG - Successfully published message to topic 'Frontend/video_topic_selected'
+2024-10-23 18:17:01,565 - __main__ - DEBUG - Received video topic selected: {'topic': 'WebcamModule/latest_frame'}
+2024-10-23 18:17:01,573 - __main__ - INFO - Video feed requested
+2024-10-23 18:17:14,160 - __main__ - DEBUG - Received POST request: ImmutableMultiDict([('video_topic_selected', '')])
+2024-10-23 18:17:14,160 - __main__ - DEBUG - Handling POST request: ImmutableMultiDict([('video_topic_selected', '')])
+2024-10-23 18:17:14,160 - __main__ - DEBUG - Video topic selected: 
+2024-10-23 18:17:14,161 - __main__ - DEBUG - Publishing message to topic 'Frontend/video_topic_selected': {'topic': ''}
+2024-10-23 18:17:14,161 - __main__ - DEBUG - Successfully published message to topic 'Frontend/video_topic_selected'
+2024-10-23 18:17:14,163 - __main__ - DEBUG - Received video topic selected: {'topic': ''}
+2024-10-23 18:17:14,177 - __main__ - INFO - Video feed requested
+2024-10-23 18:17:38,097 - __main__ - DEBUG - Received POST request: ImmutableMultiDict([('video_topic_selected', 'WebcamModule/latest_frame')])
+2024-10-23 18:17:38,098 - __main__ - DEBUG - Handling POST request: ImmutableMultiDict([('video_topic_selected', 'WebcamModule/latest_frame')])
+2024-10-23 18:17:38,098 - __main__ - DEBUG - Video topic selected: WebcamModule/latest_frame
+2024-10-23 18:17:38,098 - __main__ - DEBUG - Publishing message to topic 'Frontend/video_topic_selected': {'topic': 'WebcamModule/latest_frame'}
+2024-10-23 18:17:38,098 - __main__ - DEBUG - Successfully published message to topic 'Frontend/video_topic_selected'
+2024-10-23 18:17:38,100 - __main__ - DEBUG - Received video topic selected: {'topic': 'WebcamModule/latest_frame'}
+2024-10-23 18:17:38,107 - __main__ - INFO - Video feed requested
+2024-10-23 18:17:45,574 - __main__ - DEBUG - Received POST request: ImmutableMultiDict([('video_topic_selected', '')])
+2024-10-23 18:17:45,575 - __main__ - DEBUG - Handling POST request: ImmutableMultiDict([('video_topic_selected', '')])
+2024-10-23 18:17:45,575 - __main__ - DEBUG - Video topic selected: 
+2024-10-23 18:17:45,575 - __main__ - DEBUG - Publishing message to topic 'Frontend/video_topic_selected': {'topic': ''}
+2024-10-23 18:17:45,575 - __main__ - DEBUG - Successfully published message to topic 'Frontend/video_topic_selected'
+2024-10-23 18:17:45,578 - __main__ - DEBUG - Received video topic selected: {'topic': ''}
+2024-10-23 18:17:45,592 - __main__ - INFO - Video feed requested
+2024-10-23 18:18:57,910 - __main__ - INFO - Video feed requested
+2024-10-23 18:18:59,858 - __main__ - DEBUG - Received POST request: ImmutableMultiDict([('video_topic_selected', 'WebcamModule/latest_frame')])
+2024-10-23 18:18:59,859 - __main__ - DEBUG - Handling POST request: ImmutableMultiDict([('video_topic_selected', 'WebcamModule/latest_frame')])
+2024-10-23 18:18:59,859 - __main__ - DEBUG - Video topic selected: WebcamModule/latest_frame
+2024-10-23 18:18:59,859 - __main__ - DEBUG - Publishing message to topic 'Frontend/video_topic_selected': {'topic': 'WebcamModule/latest_frame'}
+2024-10-23 18:18:59,859 - __main__ - DEBUG - Successfully published message to topic 'Frontend/video_topic_selected'
+2024-10-23 18:18:59,860 - __main__ - DEBUG - Received video topic selected: {'topic': 'WebcamModule/latest_frame'}
+2024-10-23 18:18:59,905 - __main__ - INFO - Video feed requested
+2024-10-23 18:19:02,545 - __main__ - DEBUG - Received POST request: ImmutableMultiDict([('video_topic_selected', '')])
+2024-10-23 18:19:02,545 - __main__ - DEBUG - Handling POST request: ImmutableMultiDict([('video_topic_selected', '')])
+2024-10-23 18:19:02,546 - __main__ - DEBUG - Video topic selected: 
+2024-10-23 18:19:02,546 - __main__ - DEBUG - Publishing message to topic 'Frontend/video_topic_selected': {'topic': ''}
+2024-10-23 18:19:02,546 - __main__ - DEBUG - Successfully published message to topic 'Frontend/video_topic_selected'
+2024-10-23 18:19:02,547 - __main__ - DEBUG - Received video topic selected: {'topic': ''}
+2024-10-23 18:19:02,556 - __main__ - INFO - Video feed requested
+2024-10-23 18:19:05,182 - __main__ - DEBUG - Received POST request: ImmutableMultiDict([('video_topic_selected', 'WebcamModule/latest_frame')])
+2024-10-23 18:19:05,182 - __main__ - DEBUG - Handling POST request: ImmutableMultiDict([('video_topic_selected', 'WebcamModule/latest_frame')])
+2024-10-23 18:19:05,182 - __main__ - DEBUG - Video topic selected: WebcamModule/latest_frame
+2024-10-23 18:19:05,182 - __main__ - DEBUG - Publishing message to topic 'Frontend/video_topic_selected': {'topic': 'WebcamModule/latest_frame'}
+2024-10-23 18:19:05,182 - __main__ - DEBUG - Successfully published message to topic 'Frontend/video_topic_selected'
+2024-10-23 18:19:05,184 - __main__ - DEBUG - Received video topic selected: {'topic': 'WebcamModule/latest_frame'}
+2024-10-23 18:19:05,189 - __main__ - INFO - Video feed requested

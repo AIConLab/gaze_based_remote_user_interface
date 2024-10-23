@@ -1,0 +1,9 @@
+2024-10-23 01:33:18,018 - __main__ - INFO - Module Processor starting
+2024-10-23 01:33:18,020 - __main__ - INFO - VideoRenderer started
+2024-10-23 01:33:18,020 - __main__ - INFO - ModuleController started
+2024-10-23 01:33:18,020 - __main__ - INFO - ModuleDatapath started
+2024-10-23 01:33:18,020 - WebcamModule - INFO - WebcamModule started
+2024-10-23 01:33:19,158 - __main__ - INFO - New video topic detected: WebcamModule/latest_frame
+2024-10-23 01:33:28,021 - __main__ - DEBUG - ModuleController: Received selected video topic update: {'topic': 'WebcamModule/latest_frame'}
+2024-10-23 01:33:28,056 - __main__ - DEBUG - ModuleDatapath: Received selected video topic update: {'topic': 'WebcamModule/latest_frame'}
+2024-10-23 01:33:28,056 - __main__ - DEBUG - Clearing latest frame
