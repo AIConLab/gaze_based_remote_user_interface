@@ -1,0 +1,5 @@
+2024-10-22 23:04:46,431 - __main__ - INFO - Module Processor starting
+2024-10-22 23:04:46,433 - __main__ - INFO - VideoRenderer started
+2024-10-22 23:04:46,434 - __main__ - INFO - ModuleController started
+2024-10-22 23:04:46,434 - __main__ - INFO - ModuleDatapath started
+2024-10-22 23:04:46,434 - WebcamModule - INFO - WebcamModule started

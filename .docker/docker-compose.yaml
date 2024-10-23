@@ -53,7 +53,7 @@ services:
       - app_network
     depends_on:
       - zmq_proxy
-    command: "python3 main.py"
+    command: "python3 main.py --enable-logging"
 
 networks:
   app_network:

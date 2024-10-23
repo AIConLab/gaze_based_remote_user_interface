@@ -4,7 +4,7 @@ import logging
 import os
 import argparse
 from datetime import datetime
-from quart import Quart, render_template, request, jsonify, Response
+from quart import Quart, render_template, request, jsonify, Response, make_response
 from quart_cors import cors
 import asyncio
 import cv2
@@ -151,7 +151,6 @@ class Backend:
             # Publish to ModuleController
             await self.message_broker.publish("Backend/selected_video_topic_update", {"topic": self.selected_video_topic})
 
-
     async def handle_latest_frame_of_selected_topic(self, topic, message):
         frame = message['frame']
 
@@ -168,11 +167,16 @@ class Backend:
             self.mission_state = message['state']
             await self.message_broker.publish("Backend/mission_state_update", {"mission_state": self.mission_state})
     
+    async def stop(self):
+        self.logger.info("Backend stopping")
+        self.message_broker.stop()
+
 
 class Frontend:
     def __init__(self, message_broker):
         self.message_broker = message_broker
         self.current_frame = None
+        self.frame_buffer = asyncio.Queue(maxsize=10)
         self.frame_lock = asyncio.Lock()
         self.frame_available = asyncio.Event()
         self.state = {}
@@ -199,33 +203,53 @@ class Frontend:
 
     async def handle_video_frame(self, topic, message):
         try:
-            compressed_frame = message['frame']
-            np_arr = np.frombuffer(compressed_frame, np.uint8)
-            frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-            _, buffer = cv2.imencode('.jpg', frame)
-            
-            async with self.frame_lock:
-                self.current_frame = buffer.tobytes()
-            
-            self.frame_available.set()  # Signal that a new frame is available
-
+            # Just put the raw frame in the buffer
+            if len(message['frame']) > 0:  # Basic check to ensure frame isn't empty
+                # If buffer is full, remove oldest frame
+                if self.frame_buffer.full():
+                    try:
+                        self.frame_buffer.get_nowait()
+                    except asyncio.QueueEmpty:
+                        pass
+                await self.frame_buffer.put(message['frame'])
         except Exception as e:
-            self.logger.error(f"Error processing video frame: {str(e)}")
+            self.logger.error(f"Error handling video frame: {str(e)}")
 
     async def video_feed(self):
         self.logger.info("Video feed requested")
-        
-        async def generate():
-            while True:
-                await self.frame_available.wait()  # Wait for a new frame
-                self.frame_available.clear()  # Reset the event
-                
-                async with self.frame_lock:
-                    if self.current_frame:
-                        yield (b'--frame\r\n'
-                               b'Content-Type: image/jpeg\r\n\r\n' + self.current_frame + b'\r\n')
 
-        return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
+        async def generate():
+            try:
+                while True:
+                    try:
+                        # Wait for frame with timeout
+                        frame_data = await asyncio.wait_for(self.frame_buffer.get(), timeout=1.0)
+                        
+                        yield (b'--frame\r\n'
+                               b'Content-Type: image/jpeg\r\n\r\n' + frame_data + b'\r\n')
+                    
+                    except asyncio.TimeoutError:
+                        # Just continue waiting for next frame
+                        continue
+                        
+            except asyncio.CancelledError:
+                self.logger.info("Video feed generator cancelled")
+                raise
+            except Exception as e:
+                self.logger.error(f"Error in video feed generator: {str(e)}")
+                raise
+
+        response = await make_response(
+            generate(),
+            {
+                'Content-Type': 'multipart/x-mixed-replace; boundary=frame',
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0',
+            }
+        )
+        response.timeout = None  # Disable timeout for streaming
+        return response
 
     async def publish_message(self, topic, message):
         self.logger.debug(f"Publishing message to topic '{topic}': {message}")
@@ -293,6 +317,9 @@ class WebHost:
     def run(self):
         self.app.run(host=self.ip, port=self.port, debug=False, use_reloader=False)
 
+    def stop(self):
+        self.front_end.stop()
+        self.backend.stop()
 
 
 async def main(enable_logging):
@@ -305,10 +332,13 @@ async def main(enable_logging):
 
     try:
         await web_host.app.run_task(host=web_host.ip, port=web_host.port)
+
     except KeyboardInterrupt:
         logger.info("Shutting down...")
     finally:
-        await web_host.message_broker.stop()
+        await web_host.stop()
+
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

@@ -1,0 +1,23 @@
+2024-10-22 19:31:13,480 - __main__ - INFO - Web host starting
+2024-10-22 19:31:13,482 - __main__ - INFO - Web host starting
+2024-10-22 19:31:13,483 - __main__ - INFO - Backend started
+2024-10-22 19:31:13,483 - __main__ - INFO - Frontend started
+2024-10-22 19:31:13,487 - hypercorn.error - INFO - Running on http://0.0.0.0:5000 (CTRL + C to quit)
+2024-10-22 19:31:14,267 - __main__ - DEBUG - Received video frame for topic 'Backend/selected_topic_latest_frame'
+2024-10-22 19:31:14,364 - __main__ - DEBUG - Received video frame for topic 'Backend/selected_topic_latest_frame'
+2024-10-22 19:31:14,466 - __main__ - DEBUG - Received video frame for topic 'Backend/selected_topic_latest_frame'
+2024-10-22 19:31:14,564 - __main__ - DEBUG - Received video frame for topic 'Backend/selected_topic_latest_frame'
+2024-10-22 19:31:14,660 - __main__ - DEBUG - Received video frame for topic 'Backend/selected_topic_latest_frame'
+2024-10-22 19:31:14,761 - __main__ - DEBUG - Received video frame for topic 'Backend/selected_topic_latest_frame'
+2024-10-22 19:31:14,848 - __main__ - DEBUG - Received video frame for topic 'Backend/selected_topic_latest_frame'
+2024-10-22 19:31:14,960 - __main__ - DEBUG - Received video frame for topic 'Backend/selected_topic_latest_frame'
+2024-10-22 19:31:15,060 - __main__ - DEBUG - Received video frame for topic 'Backend/selected_topic_latest_frame'
+2024-10-22 19:31:15,151 - __main__ - DEBUG - Received video frame for topic 'Backend/selected_topic_latest_frame'
+2024-10-22 19:31:15,255 - __main__ - DEBUG - Received video frame for topic 'Backend/selected_topic_latest_frame'
+2024-10-22 19:31:15,361 - __main__ - DEBUG - Received video frame for topic 'Backend/selected_topic_latest_frame'
+2024-10-22 19:31:15,467 - __main__ - DEBUG - Received video frame for topic 'Backend/selected_topic_latest_frame'
+2024-10-22 19:31:15,547 - __main__ - DEBUG - Received video frame for topic 'Backend/selected_topic_latest_frame'
+2024-10-22 19:31:15,662 - __main__ - DEBUG - Received video frame for topic 'Backend/selected_topic_latest_frame'
+2024-10-22 19:31:15,761 - __main__ - DEBUG - Received video frame for topic 'Backend/selected_topic_latest_frame'
+2024-10-22 19:31:15,863 - __main__ - DEBUG - Received video frame for topic 'Backend/selected_topic_latest_frame'
+2024-10-22 19:31:15,952 - __main__ - DEBUG - Received video frame for topic 'Backend/selected_topic_latest_frame'

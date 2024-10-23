@@ -5,39 +5,48 @@ document.addEventListener('DOMContentLoaded', function() {
     const missionPause = document.getElementById('mission-pause');
     const missionStop = document.getElementById('mission-stop');
     const videoFeed = document.getElementById('video-feed');
-
-    // Set up video feed
+    
     function setupVideoFeed() {
-        videoFeed.src = '/video_feed?' + new Date().getTime();
-        videoFeed.onload = function() {
-            console.log('Video feed loaded successfully');
-        };
+        // Add timestamp to prevent caching
+        const timestamp = new Date().getTime();
+        videoFeed.src = `/video_feed?t=${timestamp}`;
+        
         videoFeed.onerror = function() {
-            console.error('Error loading video feed');
-            setTimeout(setupVideoFeed, 5000);
+            console.error('Video feed error - attempting to reconnect...');
+            setTimeout(() => {
+                if (document.visibilityState === 'visible') {
+                    setupVideoFeed();
+                }
+            }, 1000);
         };
     }
 
-    // Initial setup
-    setupVideoFeed();
-    updateVideoTopic('');  // Send default topic on page load
-
-    videoTopicsSelect.addEventListener('change', function() {
-        const selectedTopic = this.value;
-        updateVideoTopic(selectedTopic);
+    // Monitor visibility changes
+    document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'visible') {
+            setupVideoFeed();
+        }
     });
 
-    function updateVideoTopic(topic) {
+    // Initial setup
+    setupVideoFeed();
+    
+    // Handle topic changes
+    videoTopicsSelect.addEventListener('change', function() {
+        const selectedTopic = this.value;
         fetch('/button_press', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
             },
-            body: `video_topic_selected=${encodeURIComponent(topic)}`
+            body: `video_topic_selected=${encodeURIComponent(selectedTopic)}`
         }).then(() => {
-            setupVideoFeed(); // Reload video feed when topic changes
+            setupVideoFeed();
         });
-    }
+    });
+
+    
+
     gazeToggle.addEventListener('click', function() {
         fetch('/button_press', {
             method: 'POST',

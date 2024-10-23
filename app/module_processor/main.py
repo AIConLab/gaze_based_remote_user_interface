@@ -40,13 +40,18 @@ def setup_logging(enable_logging):
     for logger_name in ['WebcamModule', 'VideoRenderer', 'ModuleController', 'ModuleDatapath']:
         logging.getLogger(logger_name).setLevel(log_level)
 
+
 class VideoRenderer:
-    def __init__(self, video_frame_rate=15, message_broker: MessageBroker = None):
+    def __init__(self, video_fps=15, output_width=1280, output_height=720, message_broker: MessageBroker = None):
         self.message_broker = message_broker
         self.render_apriltags = False
-        self.video_frame_rate = video_frame_rate
+
+        self.video_fps = video_fps
+        self.output_width = output_width
+        self.output_height = output_height
         self.latest_frame = None
         self.logger = logging.getLogger(__name__)
+        self.jpeg_quality = 70
 
     async def start(self):
         self.logger.info("VideoRenderer started")
@@ -56,33 +61,56 @@ class VideoRenderer:
 
         asyncio.create_task(self.publish_latest_frame())
 
-    
-    
     async def handle_selected_topic_latest_frame(self, topic, message):
         compressed_frame = message["frame"]
         np_arr = np.frombuffer(compressed_frame, np.uint8)
-        self.latest_frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-        
+        latest_frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+
+        self.latest_frame = latest_frame
+
+
+        # Render apriltags here if needed
         if self.render_apriltags:
-            # Render apriltags here if needed
             pass
 
     async def clear_latest_frame(self, topic, message):
+        self.logger.debug(f"Clearing latest frame")
         self.latest_frame = None
 
     async def publish_latest_frame(self):
-        while True:
-            if self.latest_frame is not None:
-                _, jpeg = cv2.imencode('.jpg', self.latest_frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
-                await self.message_broker.publish("VideoRender/latest_rendered_frame", {'frame': jpeg.tobytes()})
+        try:
+            while True:
+                if self.latest_frame is not None:
+                    _, jpeg = cv2.imencode('.jpg', self.latest_frame, [cv2.IMWRITE_JPEG_QUALITY, self.jpeg_quality])
+                    await self.message_broker.publish("VideoRender/latest_rendered_frame", {'frame': jpeg.tobytes()})
+                else:
+                    blank_frame = np.zeros((self.output_height, self.output_width, 3), np.uint8)
+                    cv2.putText(blank_frame, "No frame available", (self.output_width//2 - 100, self.output_height//2), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+                    _, jpeg = cv2.imencode('.jpg', blank_frame, [cv2.IMWRITE_JPEG_QUALITY, self.jpeg_quality])
+                    await self.message_broker.publish("VideoRender/latest_rendered_frame", {'frame': jpeg.tobytes()})
+                
+                # Change sleep time to match FPS
+                await asyncio.sleep(1/self.video_fps)
 
-            else:
-                blank_frame = np.zeros((480, 640, 3), np.uint8)
-                cv2.putText(blank_frame, "Nothing to show", (25, 120),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-                _, jpeg = cv2.imencode('.jpg', blank_frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
-                await self.message_broker.publish("VideoRender/latest_rendered_frame", {'frame': jpeg.tobytes()})
-            await asyncio.sleep(1/self.video_frame_rate)
+        except Exception as e:
+            self.logger.error(f"Error in publish_latest_frame: {str(e)}")
+            raise e
+
+    def frame_reshape(self, frame):
+        h, w = frame.shape[:2]
+        aspect = w/h
+        if aspect > (self.output_width/self.output_height):
+            new_width = self.output_width
+            new_height = int(self.output_width/aspect)
+        else:
+            new_height = self.output_height
+            new_width = int(self.output_height*aspect)
+        
+        return cv2.resize(frame, (new_width, new_height))
+
+    async def stop(self):
+        self.message_broker.stop()
 
 
 class ModuleController:
@@ -111,6 +139,9 @@ class ModuleController:
         self.logger.debug(f"Received gaze enabled state update: {message}")
         self.gaze_enabled = message["gaze_enabled"]
         # TODO: Implement gaze enabled update logic
+
+    async def stop(self):
+        self.message_broker.stop()
 
 
 class ModuleDatapath:
@@ -151,80 +182,119 @@ class ModuleDatapath:
 
         self.selected_video_topic = message["topic"]
 
+    async def stop(self):
+        self.message_broker.stop()
+
 
 class WebcamModule:
-    def __init__(self, video_frame_rate=15, message_broker: MessageBroker = None):
+    def __init__(self, video_fps=15, message_broker: MessageBroker = None, jpeg_quality=70, output_width=1280, output_height=720):
         self.message_broker = message_broker
-        self.video_frame_rate = video_frame_rate
         self.logger = logging.getLogger('WebcamModule')
+
         self.cap = None
+        self.video_fps = video_fps
+        self.jpeg_quality = jpeg_quality
+        self.output_width = output_width
+        self.output_height = output_height
 
     async def start(self):
         self.logger.info("WebcamModule started")
-        self.logger.debug(f"Video frame rate set to {self.video_frame_rate}")
         try:
             self.cap = cv2.VideoCapture(0)
             if not self.cap.isOpened():
                 raise IOError("Cannot open webcam")
-            self.logger.debug("Webcam opened successfully")
+            
+            # Set camera properties
+            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.output_width)
+            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.output_height)
+            self.cap.set(cv2.CAP_PROP_FPS, self.video_fps)
+            
         except Exception as e:
             self.logger.error(f"Failed to open webcam: {str(e)}")
             return
 
-        asyncio.create_task(self.capture_and_publish_frames())
+        try:
+            asyncio.create_task(self.capture_and_publish_frames())
+
+        except Exception as e:
+            self.logger.error(f"Error in WebcamModule: {str(e)}")
+            raise e
 
     async def capture_and_publish_frames(self):
         try:
             while True:
                 ret, frame = self.cap.read()
                 if ret:
-                    frame = cv2.resize(frame, (640, 480))
                     _, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
                     await self.message_broker.publish("WebcamModule/latest_frame", 
                                                       {"topic": "WebcamModule", 
                                                        "frame": jpeg.tobytes()})
                 else:
                     self.logger.warning("Failed to capture frame from webcam")
-                await asyncio.sleep(1/self.video_frame_rate)
+
+                await asyncio.sleep(1/self.video_fps)
+
         except Exception as e:
             self.logger.error(f"Error in WebcamModule: {str(e)}")
-        finally:
-            if self.cap:
-                self.cap.release()
-                self.logger.debug("Webcam released")
 
-    def __del__(self):
+        finally:
+            self.stop()
+
+    async def stop(self):
+        self.logger.info("WebcamModule stopping")
         if self.cap:
             self.cap.release()
-            self.logger.debug("Webcam released in destructor")
+
+        self.message_broker.stop()
 
 
 async def main(enable_logging):
-    setup_logging(enable_logging)
-    logger = logging.getLogger(__name__)
-    logger.info("Module Processor starting")
+    try:
+        setup_logging(enable_logging)
+        logger = logging.getLogger(__name__)
+        logger.info("Module Processor starting")
 
-    video_renderer_message_broker = MessageBroker(1024)
-    module_controller_message_broker = MessageBroker(1024)
-    module_datapath_message_broker = MessageBroker(1024*4)
-    webcam_module_message_broker = MessageBroker(1024)
+        video_renderer_message_broker = MessageBroker(1024)
+        module_controller_message_broker = MessageBroker(1024)
+        module_datapath_message_broker = MessageBroker(1024*4)
+        webcam_module_message_broker = MessageBroker(1024)
 
-    video_renderer = VideoRenderer(video_frame_rate=30, message_broker=video_renderer_message_broker)
-    module_controller = ModuleController(message_broker=module_controller_message_broker)
-    module_datapath = ModuleDatapath(message_broker=module_datapath_message_broker)
+        video_renderer = VideoRenderer(video_fps=30, 
+                                message_broker=video_renderer_message_broker,
+                                output_width=1280, 
+                                output_height=720)
 
-    webcam_module = WebcamModule(video_frame_rate=30, message_broker=webcam_module_message_broker)
+        module_controller = ModuleController(message_broker=module_controller_message_broker)
 
-    await asyncio.gather(
-        video_renderer.start(),
-        module_controller.start(),
-        module_datapath.start(),
-        webcam_module.start()
-    )
+        module_datapath = ModuleDatapath(message_broker=module_datapath_message_broker)
 
-    # Keep the main coroutine running
-    while True:
-        await asyncio.sleep(1)
+        webcam_module = WebcamModule(video_fps=30,
+                                message_broker=webcam_module_message_broker, 
+                                output_width=1280, 
+                                output_height=720)
+
+        await asyncio.gather(
+            video_renderer.start(),
+            module_controller.start(),
+            module_datapath.start(),
+            webcam_module.start()
+        )
+
+        # Keep the main coroutine running
+        while True:
+            await asyncio.sleep(1)
+
+    except Exception as e:
+        logger.error(f"Error in main: {str(e)}")
+        raise e
+
+    finally:
+        webcam_module.stop()
+        video_renderer.stop()
+        module_controller.stop()
+        module_datapath.stop()
+
+    
 
 if __name__ == "__main__":
     import argparse

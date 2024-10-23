@@ -1,0 +1,46 @@
+2024-10-23 00:00:36,729 - __main__ - INFO - Module Processor starting
+2024-10-23 00:00:36,732 - __main__ - INFO - VideoRenderer started
+2024-10-23 00:00:36,732 - __main__ - INFO - ModuleController started
+2024-10-23 00:00:36,732 - __main__ - INFO - ModuleDatapath started
+2024-10-23 00:00:36,732 - WebcamModule - INFO - WebcamModule started
+2024-10-23 00:00:37,688 - __main__ - INFO - New video topic detected: WebcamModule/latest_frame
+2024-10-23 00:00:43,881 - __main__ - DEBUG - ModuleController: Received selected video topic update: {'topic': 'WebcamModule/latest_frame'}
+2024-10-23 00:00:43,886 - __main__ - DEBUG - ModuleDatapath: Received selected video topic update: {'topic': 'WebcamModule/latest_frame'}
+2024-10-23 00:00:43,886 - __main__ - DEBUG - Clearing latest frame
+2024-10-23 00:02:02,365 - __main__ - DEBUG - ModuleController: Received selected video topic update: {'topic': 'WebcamModule/latest_frame'}
+2024-10-23 00:02:02,370 - __main__ - DEBUG - ModuleDatapath: Received selected video topic update: {'topic': 'WebcamModule/latest_frame'}
+2024-10-23 00:02:02,370 - __main__ - DEBUG - Clearing latest frame
+2024-10-23 00:02:35,260 - __main__ - DEBUG - ModuleController: Received selected video topic update: {'topic': ''}
+2024-10-23 00:02:35,266 - __main__ - DEBUG - ModuleDatapath: Received selected video topic update: {'topic': ''}
+2024-10-23 00:02:35,266 - __main__ - DEBUG - Clearing latest frame
+2024-10-23 00:02:39,457 - __main__ - DEBUG - ModuleController: Received selected video topic update: {'topic': 'WebcamModule/latest_frame'}
+2024-10-23 00:02:39,461 - __main__ - DEBUG - ModuleDatapath: Received selected video topic update: {'topic': 'WebcamModule/latest_frame'}
+2024-10-23 00:02:39,461 - __main__ - DEBUG - Clearing latest frame
+2024-10-23 00:03:09,892 - __main__ - DEBUG - ModuleController: Received selected video topic update: {'topic': ''}
+2024-10-23 00:03:09,893 - __main__ - DEBUG - Clearing latest frame
+2024-10-23 00:03:09,893 - __main__ - DEBUG - ModuleDatapath: Received selected video topic update: {'topic': ''}
+2024-10-23 00:03:26,587 - __main__ - DEBUG - ModuleController: Received selected video topic update: {'topic': 'WebcamModule/latest_frame'}
+2024-10-23 00:03:26,588 - __main__ - DEBUG - Clearing latest frame
+2024-10-23 00:03:26,588 - __main__ - DEBUG - ModuleDatapath: Received selected video topic update: {'topic': 'WebcamModule/latest_frame'}
+2024-10-23 00:03:32,391 - __main__ - DEBUG - ModuleController: Received selected video topic update: {'topic': ''}
+2024-10-23 00:03:32,459 - __main__ - DEBUG - Clearing latest frame
+2024-10-23 00:03:32,459 - __main__ - DEBUG - ModuleDatapath: Received selected video topic update: {'topic': ''}
+2024-10-23 00:03:36,757 - __main__ - DEBUG - ModuleController: Received selected video topic update: {'topic': 'WebcamModule/latest_frame'}
+2024-10-23 00:03:36,772 - __main__ - DEBUG - ModuleDatapath: Received selected video topic update: {'topic': 'WebcamModule/latest_frame'}
+2024-10-23 00:03:36,773 - __main__ - DEBUG - Clearing latest frame
+2024-10-23 00:03:41,743 - __main__ - DEBUG - Received gaze enabled state update: {'gaze_enabled': True}
+2024-10-23 00:03:46,485 - __main__ - DEBUG - ModuleController: Received selected video topic update: {'topic': ''}
+2024-10-23 00:03:46,486 - __main__ - DEBUG - Clearing latest frame
+2024-10-23 00:03:46,487 - __main__ - DEBUG - ModuleDatapath: Received selected video topic update: {'topic': ''}
+2024-10-23 00:03:47,776 - __main__ - DEBUG - ModuleController: Received selected video topic update: {'topic': 'WebcamModule/latest_frame'}
+2024-10-23 00:03:47,777 - __main__ - DEBUG - Clearing latest frame
+2024-10-23 00:03:47,778 - __main__ - DEBUG - ModuleDatapath: Received selected video topic update: {'topic': 'WebcamModule/latest_frame'}
+2024-10-23 00:03:49,249 - __main__ - DEBUG - ModuleController: Received selected video topic update: {'topic': ''}
+2024-10-23 00:03:49,256 - __main__ - DEBUG - ModuleDatapath: Received selected video topic update: {'topic': ''}
+2024-10-23 00:03:49,256 - __main__ - DEBUG - Clearing latest frame
+2024-10-23 00:03:50,441 - __main__ - DEBUG - ModuleController: Received selected video topic update: {'topic': 'WebcamModule/latest_frame'}
+2024-10-23 00:03:50,445 - __main__ - DEBUG - ModuleDatapath: Received selected video topic update: {'topic': 'WebcamModule/latest_frame'}
+2024-10-23 00:03:50,445 - __main__ - DEBUG - Clearing latest frame
+2024-10-23 00:03:51,543 - __main__ - DEBUG - ModuleController: Received selected video topic update: {'topic': ''}
+2024-10-23 00:03:51,548 - __main__ - DEBUG - ModuleDatapath: Received selected video topic update: {'topic': ''}
+2024-10-23 00:03:51,548 - __main__ - DEBUG - Clearing latest frame
