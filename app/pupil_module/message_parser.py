@@ -3,7 +3,7 @@ import msgpack
 import logging
 import os
 import asyncio
-from collections import deque
+from datetime import datetime
 
 from message_broker import MessageBroker
 
@@ -24,6 +24,34 @@ The surface-normalized coordinates of mapped gaze/fixations have the following p
 
 The lens distortion (camera intrinsics) are compensated for during the process of mapping data from the scene image space to the surface coordinate system. In other words, the surface coordinate system is not affected by scene camera lens distortion.
 """
+
+
+def setup_logging(enable_logging):
+    if enable_logging:
+        log_level = logging.DEBUG
+    else:
+        log_level = logging.INFO
+
+    logging.basicConfig(
+        level=log_level,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler()
+        ]
+    )
+
+
+    if enable_logging:
+        log_dir = "logs"
+        os.makedirs(log_dir, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_file = os.path.join(log_dir, f"app_log_{timestamp}.log")
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setLevel(logging.DEBUG)
+        file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+        logging.getLogger().addHandler(file_handler)
+
+
 
 class PupilMessageParser:
     def __init__(self, surface_name="Surface 1", pupil_ip='127.0.0.1', pupil_port=50020, message_broker: MessageBroker = None):
@@ -114,15 +142,22 @@ class PupilMessageParser:
                 latest_gaze = gaze_data[-1]
                 gaze_x, gaze_y = latest_gaze.get('norm_pos', (None, None))
                 
+                # Process gaze data
                 if gaze_x is not None and gaze_y is not None:
-                    message = {
-                        'timestamp': payload.get('timestamp'),
-                        'x': gaze_x,
-                        'y': gaze_y
-                    }
-                    await self.message_broker.publish('PupilMessageParser/gaze_data', message)
 
-                    self.logger.info(f"Published gaze data: {message}")
+                    # Filter nonnormalized gaze data
+                    if not (gaze_x < 0 or gaze_x > 1 or gaze_y < 0 or gaze_y > 1):
+                        message = {
+                            'timestamp': payload.get('timestamp'),
+                            'x': gaze_x,
+                            'y': gaze_y
+                        }
+                        await self.message_broker.publish('PupilMessageParser/normalized_gaze_data', message)
+
+                        self.logger.debug(f"Published gaze data: {message}")
+
+                    else:
+                        self.logger.debug(f"Invalid gaze data: {gaze_x}, {gaze_y}")
 
         except Exception as e:
             self.logger.error(f"Error publishing gaze data: {e}")
@@ -136,15 +171,23 @@ class PupilMessageParser:
                 latest_fixation = fixation_data[-1]
                 fix_x, fix_y = latest_fixation.get('norm_pos', (None, None))
                 
+                # Process fixation data
                 if fix_x is not None and fix_y is not None:
-                    message = {
-                        'timestamp': payload.get('timestamp'),
-                        'x': fix_x,
-                        'y': fix_y
-                    }
-                    await self.message_broker.publish('PupilMessageParser/fixation_data', message)
 
-                    self.logger.info(f"Published fixation data: {message}")
+                    # Filter nonnormalized fixation data
+                    if not (fix_x < 0 or fix_x > 1 or fix_y < 0 or fix_y > 1):
+                        message = {
+                            'timestamp': payload.get('timestamp'),
+                            'x': fix_x,
+                            'y': fix_y
+                        }
+                        await self.message_broker.publish('PupilMessageParser/normalized_fixation_data', message)
+
+                        self.logger.debug(f"Published fixation data: {message}")
+
+                    else:
+                        self.logger.debug(f"Invalid fixation data: {fix_x}, {fix_y}")
+
         except Exception as e:
             self.logger.error(f"Error publishing fixation data: {e}")
 
@@ -157,8 +200,9 @@ class PupilMessageParser:
         self.pupil_context.term()
 
 
-async def main():
+async def main(enable_logging):
     try:
+        setup_logging(enable_logging)
         message_broker = MessageBroker(1024)
         parser = PupilMessageParser(message_broker=message_broker)
         await parser.start()
@@ -172,10 +216,10 @@ async def main():
 
 
 if __name__ == "__main__":
-    # Setup logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--enable-logging', action='store_true',
+                        help='Enable logging')
+    args = parser.parse_args()
 
-    asyncio.run(main())
+    asyncio.run(main(args.enable_logging))

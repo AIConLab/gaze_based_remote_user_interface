@@ -78,10 +78,10 @@ services:
       - LIBGL_ALWAYS_INDIRECT=0
       - PYTHONPATH=/pupil_module:/app_shared_data
       - XAUTHORITY=/tmp/.docker.xauth
-      - ZMQ_PUB_ADDRESS=tcp://zmq_proxy:5559
-      - ZMQ_SUB_ADDRESS=tcp://zmq_proxy:5560
-    # If you need to open the pupil capture gui, uncomment the following line and comment out the "networks" and "app_network" lines
-    network_mode: "host"
+      # Using localhost since Pupil Capture runs on host network
+      - ZMQ_PUB_ADDRESS=tcp://localhost:5559
+      - ZMQ_SUB_ADDRESS=tcp://localhost:5560
+    network_mode: "host"  # Required for Pupil Capture
     group_add:
       - plugdev
       - video
