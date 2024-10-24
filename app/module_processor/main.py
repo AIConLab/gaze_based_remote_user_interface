@@ -10,6 +10,7 @@ import argparse
 from datetime import datetime
 
 from message_broker import MessageBroker
+from utilities import AprilTagRenderer
 
 
 def setup_logging(enable_logging):
@@ -49,9 +50,21 @@ class VideoRenderer:
                   message_broker: MessageBroker = None,
                   max_queue_size=3  # Buffer up to 3 frames
                   ):
+
+        # Init classes
         self.message_broker = message_broker
+        self.apriltag_renderer = AprilTagRenderer(
+            upper_left_corner_tag_path="tags/tag41_12_00000.svg",
+            lower_left_corner_tag_path="tags/tag41_12_00001.svg",
+            upper_right_corner_tag_path="tags/tag41_12_00002.svg",
+            lower_right_corner_tag_path="tags/tag41_12_00003.svg",
+            scale=1/8
+        )
+        
+        # Processing flags
         self.render_apriltags = False
 
+        # Video rendering parameters
         self.image_quality = 70
         self.video_fps = video_fps
         self.output_width = output_width
@@ -68,13 +81,19 @@ class VideoRenderer:
     async def start(self):
         self.logger.info("VideoRenderer started")
 
-        await self.message_broker.subscribe("ModuleDatapath/selected_topic_latest_frame", 
-                                          self.handle_selected_topic_latest_frame)
-        await self.message_broker.subscribe("ModuleController/selected_video_topic_update", 
-                                          self.handle_topic_update)
 
         # Start the publishing task
         asyncio.create_task(self.publish_latest_frame())
+
+
+        # Datapath subscriptions
+        await self.message_broker.subscribe("ModuleDatapath/selected_topic_latest_frame", 
+                                          self.handle_selected_topic_latest_frame)
+        
+        # ModuleController subscriptions
+        await self.message_broker.subscribe("ModuleController/selected_video_topic_update", self.handle_topic_update)
+        await self.message_broker.subscribe("ModuleController/render_apriltags", self.handle_render_apriltags)
+
 
     async def handle_selected_topic_latest_frame(self, topic, message):
         try:
@@ -117,6 +136,25 @@ class VideoRenderer:
                 await asyncio.sleep(0.1)  # Small delay for synchronization
                 self.topic_change_event.clear()  # Clear topic change flag
 
+    async def handle_render_apriltags(self, topic, message):
+        self.logger.debug(f"Received render_apriltags message: {message}")
+
+        # Update render_apriltags flag, default to False if message is invalid
+        self.render_apriltags = message.get("render_apriltags", False)
+
+    async def process_frame(self, frame):
+        """Process frame with AprilTags if enabled"""
+        if frame is None:
+            return frame
+            
+        if self.render_apriltags:
+            # Set frame in apriltag renderer
+            self.apriltag_renderer.set_latest_frame(frame)
+            # Get processed frame with overlays
+            return self.apriltag_renderer.get_latest_frame()
+
+        return frame
+
     async def publish_latest_frame(self):
         """Publishes frames to the message broker"""
         blank_frame = None  # Cache blank frame
@@ -125,6 +163,7 @@ class VideoRenderer:
         try:
             while True:
                 async with self.frame_lock:
+                    # Check if topic change event is set
                     if self.topic_change_event.is_set():
                         # Create switching frame if not cached
                         if switching_frame is None:
@@ -136,6 +175,7 @@ class VideoRenderer:
                         frame_to_publish = switching_frame
                         status = "switching"
                         
+                    # Check if frame queue is empty
                     elif self.frame_queue.empty():
                         # Create blank frame if not cached
                         if blank_frame is None:
@@ -150,6 +190,10 @@ class VideoRenderer:
                     else:
                         frame_to_publish = await self.frame_queue.get()
                         status = "latest"
+
+                    # Process frame with AprilTags if enabled
+                    if status == "latest":  # Only process actual video frames
+                        frame_to_publish = await self.process_frame(frame_to_publish)
 
                     # Encode frame
                     _, encoded_out = cv2.imencode('.jpeg', frame_to_publish, 
@@ -208,7 +252,9 @@ class ModuleController:
     async def handle_gaze_enabled_state_update(self, topic, message):
         self.logger.debug(f"Received gaze enabled state update: {message}")
         self.gaze_enabled = message["gaze_enabled"]
-        # TODO: Implement gaze enabled update logic
+
+        # Publish render_apriltags msg
+        await self.message_broker.publish("ModuleController/render_apriltags", {"render_apriltags": self.gaze_enabled})
 
     async def stop(self):
         self.message_broker.stop()
@@ -324,6 +370,7 @@ class WebcamModule:
             self.cap.release()
 
         self.message_broker.stop()
+
 
 
 async def main(enable_logging):

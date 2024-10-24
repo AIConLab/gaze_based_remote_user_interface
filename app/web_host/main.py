@@ -334,7 +334,6 @@ async def main(enable_logging):
         await web_host.stop()
 
 
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--enable-logging', action='store_true', help='Enable logging')
