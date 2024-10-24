@@ -261,6 +261,9 @@ class ModuleController:
 
 
 class ModuleDatapath:
+    """
+    Class to handle data path between modules. Should not do any processing, only pass data between modules.
+    """
     def __init__(self, message_broker: MessageBroker):
         self.message_broker = message_broker
         self.video_topics = set() 
@@ -269,7 +272,15 @@ class ModuleDatapath:
 
     async def start(self):
         self.logger.info("ModuleDatapath started")
+
+        # Webcam subs
         await self.message_broker.subscribe("WebcamModule/latest_frame", self.handle_incoming_stream)
+
+        # Pupil subs
+        await self.message_broker.subscribe("PupilMessageParser/normalized_gaze_data", self.handle_pupil_normalized_gaze_data)
+        await self.message_broker.subscribe("PupilMessageParser/normalized_fixation_data", self.handle_pupil_normalized_fixation_data)
+        
+        # ModuleController subs
         await self.message_broker.subscribe("ModuleController/selected_video_topic_update", self.handle_selected_video_topic_update)
         asyncio.create_task(self.publish_available_topics())
 
@@ -277,7 +288,7 @@ class ModuleDatapath:
         while True:
             await self.message_broker.publish("ModuleDatapath/available_video_topics", {"topics": list(self.video_topics)})
             await asyncio.sleep(1)
-
+        
     async def handle_incoming_stream(self, topic, message):
         """
         MUX incoming video streams based on selected video topic
@@ -297,6 +308,12 @@ class ModuleDatapath:
         self.logger.debug(f"ModuleDatapath: Received selected video topic update: {message}")
 
         self.selected_video_topic = message["topic"]
+
+    async def handle_pupil_normalized_gaze_data(self, topic, message):
+        self.logger.debug(f"Received normalized gaze data: {message}")
+
+    async def handle_pupil_normalized_fixation_data(self, topic, message):
+        self.logger.debug(f"Received normalized fixation data: {message}")
 
     async def stop(self):
         self.message_broker.stop()

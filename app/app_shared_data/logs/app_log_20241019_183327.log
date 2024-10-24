@@ -1,4 +1,0 @@
-2024-10-19 18:33:27,618 - root - INFO - Starting ZeroMQ proxy
-2024-10-19 18:33:27,618 - root - INFO - Frontend bound to tcp://*:5559
-2024-10-19 18:33:27,619 - root - INFO - Backend bound to tcp://*:5560
-2024-10-19 18:33:27,978 - root - INFO - Proxy received message from backend: [b'\x01Frontend/gaze_enabled_button_pressed']

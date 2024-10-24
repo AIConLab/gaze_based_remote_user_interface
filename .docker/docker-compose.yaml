@@ -1,7 +1,6 @@
 version: '3.8'
 
 services:
-
   zmq_proxy:
     build:
       context: .
@@ -54,6 +53,40 @@ services:
     depends_on:
       - zmq_proxy
     command: "python3 main.py" #--enable-logging"
+
+  pupil_module:
+    build:
+      context: .
+      dockerfile: Dockerfile.pupil_dev
+      args:
+          USER_ID: ${UID:-1000}
+          GROUP_ID: ${GID:-1000}
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - /dev/shm:/dev/shm
+      - ../app/pupil_module:/pupil_module
+      - ../app/app_shared_data:/app_shared_data
+      - ../app/pupil_module/pupil_capture_settings:/app/pupil/capture_settings
+    privileged: true
+    devices:
+      - /dev/video0:/dev/video0
+      - /dev/dri:/dev/dri
+      - /dev/bus/usb:/dev/bus/usb
+    environment:
+      - DISPLAY=${DISPLAY}
+      - QT_X11_NO_MITSHM=1
+      - LIBGL_ALWAYS_INDIRECT=0
+      - PYTHONPATH=/pupil_module:/app_shared_data
+      - XAUTHORITY=/tmp/.docker.xauth
+      # Using localhost since Pupil Capture runs on host network
+      - ZMQ_PUB_ADDRESS=tcp://localhost:5559
+      - ZMQ_SUB_ADDRESS=tcp://localhost:5560
+    network_mode: "host"  # Required for Pupil Capture
+    group_add:
+      - plugdev
+      - video
+    command: "/pupil_module/start.sh"
+
 
 networks:
   app_network:
