@@ -24,7 +24,6 @@ RUN apt-get update && apt-get install -y \
     libglu1-mesa \
     xvfb \
     xauth \
-    supervisor \
     && rm -rf /var/lib/apt/lists/*
 
 ARG USER_ID=1000
@@ -40,16 +39,8 @@ RUN git clone https://github.com/jc-cr/pupil.git /app/pupil && \
     git checkout surface_app && \
     git config --global --add safe.directory /app/pupil
 
-# Set up supervisor directories with correct permissions
-RUN mkdir -p /var/log/supervisor && \
-    mkdir -p /var/run/supervisor && \
-    chown -R pupiluser:pupilgroup /var/log/supervisor && \
-    chown -R pupiluser:pupilgroup /var/run/supervisor
-
 # Make sure pupiluser owns the app directory
 RUN chown -R pupiluser:pupilgroup /app/pupil
-
-# Copy supervisor config
 
 WORKDIR /app/pupil
 # Install Python dependencies
@@ -60,6 +51,7 @@ RUN mkdir -p /etc/udev/rules.d && \
 # Set environment variables
 ENV PYTHONPATH=/app/pupil
 ENV LIBGL_ALWAYS_INDIRECT=0
+
 # Switch to pupiluser
 USER pupiluser
 
