@@ -1,0 +1,67 @@
+FROM python:3.8-slim-buster
+
+ENV DEBIAN_FRONTEND=noninteractive
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    python3 \
+    python3-pip \
+    libusb-1.0-0 \
+    libportaudio2 \
+    libgl1-mesa-glx \
+    libgl1-mesa-dri \
+    libglib2.0-0 \
+    libglfw3 \
+    libglew2.1 \
+    libsm6 \
+    libxext6 \
+    libxrender1 \
+    libxcomposite1 \
+    x11-apps \
+    mesa-utils \
+    libopengl0 \
+    libglx-mesa0 \
+    libglu1-mesa \
+    xvfb \
+    xauth \
+    supervisor \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG USER_ID=1000
+ARG GROUP_ID=1000
+
+# Create pupilgroup and add pupiluser to existing plugdev group
+RUN groupadd -g ${GROUP_ID} pupilgroup && \
+    useradd -m -u ${USER_ID} -g pupilgroup -G plugdev -s /bin/bash pupiluser
+
+# Clone specific commit of Pupil repository
+RUN git clone https://github.com/jc-cr/pupil.git /app/pupil && \
+    cd /app/pupil && \
+    git checkout surface_app && \
+    git config --global --add safe.directory /app/pupil
+
+# Set up supervisor directories with correct permissions
+RUN mkdir -p /var/log/supervisor && \
+    mkdir -p /var/run/supervisor && \
+    chown -R pupiluser:pupilgroup /var/log/supervisor && \
+    chown -R pupiluser:pupilgroup /var/run/supervisor
+
+# Make sure pupiluser owns the app directory
+RUN chown -R pupiluser:pupilgroup /app/pupil
+
+# Copy supervisor config
+
+WORKDIR /app/pupil
+# Install Python dependencies
+RUN python3 -m pip install --no-cache-dir -r requirements.txt
+# Set up USB access
+RUN mkdir -p /etc/udev/rules.d && \
+    echo 'SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", GROUP="plugdev", MODE="0664"' > /etc/udev/rules.d/10-libuvc.rules
+# Set environment variables
+ENV PYTHONPATH=/app/pupil
+ENV LIBGL_ALWAYS_INDIRECT=0
+# Switch to pupiluser
+USER pupiluser
+
+# Set the working directory to pupil_src
+WORKDIR /app/pupil/pupil_src

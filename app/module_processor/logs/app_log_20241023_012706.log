@@ -1,6 +1,0 @@
-2024-10-23 01:27:06,810 - __main__ - INFO - Module Processor starting
-2024-10-23 01:27:06,812 - __main__ - INFO - VideoRenderer started
-2024-10-23 01:27:06,813 - __main__ - INFO - ModuleController started
-2024-10-23 01:27:06,813 - __main__ - INFO - ModuleDatapath started
-2024-10-23 01:27:06,813 - WebcamModule - INFO - WebcamModule started
-2024-10-23 01:27:07,935 - WebcamModule - ERROR - Error in WebcamModule: cannot unpack non-iterable bool object
