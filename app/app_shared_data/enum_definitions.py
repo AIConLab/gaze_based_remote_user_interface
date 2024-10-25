@@ -23,3 +23,20 @@ class MissionCommandSignals(Enum):
     MISSION_PAUSE = 1
     MISSION_ABORT = 2
     MISSION_RESUME = 3
+
+@unique
+class ProcessingModes(Enum):
+    VIDEO_RENDERING = 0 # Video rendering mode, blank banner
+    INITIAL_FIXATION = 1 # Initial fixation mode, banner buttons: "Make Waypoint", "Segment", "Cancel"
+    PROCESSING_DATA = 2 # Processing data mode, blank banner
+    SEGMENTATION_RESULTS = 3 # Segmentation results mode, banner buttons: "Accept", "Cancel" "Cycle left", "Cycle right"
+    WAYPOINT_RESULTS = 4 # Waypoint results mode, banner buttons: "Accept", "Cancel"
+
+@unique
+class ProcessingModeActions(Enum):
+    MAKE_WAYPOINT = 0
+    SEGMENT = 1
+    CANCEL = 2
+    ACCEPT = 3
+    CYCLE_LEFT = 4
+    CYCLE_RIGHT = 5
