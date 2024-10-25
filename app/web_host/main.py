@@ -10,7 +10,7 @@ import asyncio
 import cv2
 import numpy as np
 
-from enum_definitions import MissionStates, MissionCommandSignals
+from enum_definitions import MissionStates, MissionCommandSignals, ProcessingModes
 from message_broker import MessageBroker
 
 from logging.handlers import RotatingFileHandler
@@ -68,6 +68,7 @@ class Backend:
     def __init__(self, message_broker: MessageBroker):
         self.message_broker = message_broker
 
+        self.processing_mode = ProcessingModes.VIDEO_RENDERING
         self.gaze_enabled_state = False
         self.mission_state = None
         self.robot_connected_state = False
@@ -78,7 +79,8 @@ class Backend:
 
     async def start(self):
         self.logger.info("Backend started")
-     # Front end subscriptions
+
+        # Front end subscriptions
         await self.message_broker.subscribe("Frontend/gaze_enabled_button_pressed", self.handle_gaze_enabled_button_pressed)
         await self.message_broker.subscribe("Frontend/mission_start_button_pressed", self.handle_mission_start_button_pressed)
         await self.message_broker.subscribe("Frontend/mission_pause_button_pressed", self.handle_mission_pause_button_pressed)
@@ -90,6 +92,9 @@ class Backend:
 
         # ModuleDatapath subscriptions
         await self.message_broker.subscribe("ModuleDatapath/available_video_topics", self.handle_available_video_topics)
+
+        # ModuleController subscriptions
+        await self.message_broker.subscribe("ModuleController/processing_mode_update", self.handle_processing_mode_update)
 
         # MissionManager subscriptions
         await self.message_broker.subscribe("MissionManager/mission_state_update", self.handle_mission_state_update)
@@ -162,6 +167,12 @@ class Backend:
             self.available_video_topics = message['topics']
             await self.message_broker.publish("Backend/available_video_topics_update", {"topics": self.available_video_topics})
 
+    async def handle_processing_mode_update(self, topic, message):    
+        self.logger.debug(f"Received processing mode update: {message}")
+
+        self.processing_mode = message['mode']
+        self.message_broker.publish("Backend/processing_mode_update", {"mode": self.processing_mode})
+
     async def handle_mission_state_update(self, topic, message):
         if 'state' in message:
             self.mission_state = message['state']
@@ -174,12 +185,15 @@ class Backend:
 
 class Frontend:
     def __init__(self, message_broker):
+
         self.message_broker = message_broker
         self.current_frame = None
         self.frame_buffer = asyncio.Queue(maxsize=5)
         self.frame_lock = asyncio.Lock()
         self.frame_available = asyncio.Event()
-        self.state = {}
+        self.state = {
+            'processing_mode': ProcessingModes.VIDEO_RENDERING  # Default mode
+        }
         self.logger = logging.getLogger(__name__)
 
 

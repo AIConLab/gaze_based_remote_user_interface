@@ -83,17 +83,3 @@ button:hover {
     object-fit: contain;
     display: block;
 }
-
-/* Add loading/error states */
-.stream-status {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    color: white;
-    background: rgba(0,0,0,0.7);
-    padding: 1em;
-    border-radius: 4px;
-    z-index: 2;
-    display: none;
-}
