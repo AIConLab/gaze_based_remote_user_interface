@@ -107,6 +107,75 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
+    // Add state polling function
+    async function pollState() {
+        try {
+            const response = await fetch('/state');
+            const state = await response.json();
+            
+            const interfaceBanner = document.querySelector('.interface-banner');
+            const currentMode = interfaceBanner.dataset.mode;
+
+            if (state.processing_mode && state.processing_mode !== currentMode) {
+                // Update the interface banner based on the new mode
+                switch(state.processing_mode) {
+                    case 'INITIAL_FIXATION':
+                        interfaceBanner.innerHTML = `
+                            <button id="segment-button">Segment</button>
+                            <button id="make-waypoint-button">Make Waypoint</button>
+                            <button id="cancel-button">Cancel</button>
+                        `;
+                        break;
+                    case 'SEGMENTATION_RESULTS':
+                        interfaceBanner.innerHTML = `
+                            <button id="cycle-left-button">←</button>
+                            <button id="cycle-right-button">→</button>
+                            <button id="accept-button">Accept</button>
+                            <button id="cancel-button">Cancel</button>
+                        `;
+                        break;
+                    case 'WAYPOINT_RESULTS':
+                        interfaceBanner.innerHTML = `
+                            <button id="accept-button">Accept</button>
+                            <button id="cancel-button">Cancel</button>
+                        `;
+                        break;
+                    default:
+                        interfaceBanner.innerHTML = '';
+                }
+                
+                // Update the data-mode attribute
+                interfaceBanner.dataset.mode = state.processing_mode;
+                
+                // Reattach event listeners to new buttons
+                attachProcessActionButtonListeners();
+            }
+        } catch (error) {
+            console.error('Error polling state:', error);
+        }
+    }
+
+    // Function to attach event listeners to process action buttons
+    function attachProcessActionButtonListeners() {
+        Object.keys(processActionButtons).forEach(buttonId => {
+            const button = document.getElementById(buttonId);
+            if (button) {
+                button.addEventListener('click', function() {
+                    fetch('/button_press', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                        },
+                        body: `process_action_button_pressed=${processActionButtons[buttonId]}`
+                    });
+                });
+            }
+        });
+    }
+
+    // Poll every second
+    setInterval(pollState, 1000);
+
 
     // Add event listeners for all process action buttons
     Object.keys(processActionButtons).forEach(buttonId => {
@@ -118,7 +187,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     headers: {
                         'Content-Type': 'application/x-www-form-urlencoded',
                     },
-                    body: `process_action_button_press=${processActionButtons[buttonId]}`
+                    body: `process_action_button_pressed=${processActionButtons[buttonId]}`
                 });
             });
         }

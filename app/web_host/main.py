@@ -7,13 +7,15 @@ from datetime import datetime
 from quart import Quart, render_template, request, jsonify, Response, make_response
 from quart_cors import cors
 import asyncio
-import cv2
 import numpy as np
+import hypercorn.asyncio
+import hypercorn.config
 
 from enum_definitions import MissionStates, MissionCommandSignals, ProcessingModes, ProcessingModeActions
 from message_broker import MessageBroker
 
 from logging.handlers import RotatingFileHandler
+
 
 def setup_logging(enable_logging):
     # Set up root logger
@@ -50,16 +52,7 @@ def setup_logging(enable_logging):
         # Add the file handler to the root logger
         root_logger.addHandler(file_handler)
 
-    # Configure Quart's logger
-    quart_logger = logging.getLogger('quart.app')
-    quart_logger.setLevel(logging.DEBUG if enable_logging else logging.INFO)
-    quart_logger.propagate = True
-
-    # Disable Quart's default access log
-    logging.getLogger('quart.serving').setLevel(logging.WARNING)
-
     return root_logger
-
 
 
 class Backend:
@@ -70,7 +63,6 @@ class Backend:
         self.gaze_enabled_state = False
         self.mission_state = None
         self.robot_connected_state = False
-
         self.available_video_topics = []
 
         self.logger = logging.getLogger(__name__)
@@ -164,7 +156,6 @@ class Backend:
         await self.message_broker.publish("Backend/selected_topic_latest_frame", {"frame": frame})
 
     async def handle_available_video_topics(self, topic, message):
-
         if 'topics' in message:
             self.available_video_topics = message['topics']
             await self.message_broker.publish("Backend/available_video_topics_update", {"topics": self.available_video_topics})
@@ -180,12 +171,14 @@ class Backend:
 
         await self.message_broker.publish("Backend/processing_mode_update", {"mode": self.processing_mode})
         
-        self.logger.info(f"Backend: Processing mode updated: {self.processing_mode}")
+        self.logger.debug(f"Backend: Processing mode updated: {self.processing_mode}")
 
     async def handle_processing_mode_action(self, topic, message):
         action = message['action']
 
         await self.message_broker.publish("Backend/processing_mode_action", {"action": action})
+
+        self.logger.debug(f"Backend: Processing mode action: {action}")
 
     async def stop(self):
         self.logger.info("Backend stopping")
@@ -293,15 +286,17 @@ class Frontend:
                 selected_topic = form.get("video_topic_selected")
                 await self.publish_message("Frontend/video_topic_selected", {'topic': selected_topic})
 
-            elif "process_action_button_press" in form:
-                action = form.get("process_action_button_pressed")
+            elif "process_action_button_pressed" in form:
+                action = form.get("process_action_button_pressed")  # Match exactly
                 action_enum = ProcessingModeActions[action]
-
                 await self.publish_message(
-                    "Frontend/process_action_button_pressed", {'action': action_enum})
+                    "Frontend/process_action_button_pressed", 
+                    {'action': action_enum.name}
+                )
 
             else:
                 self.logger.warning(f"Unknown POST request: {form}")
+
         except Exception as e:
             self.logger.error(f"Error handling POST request: {str(e)}")
 
@@ -330,7 +325,20 @@ class WebHost:
 
         self.backend = Backend(self.backend_message_broker)
         self.frontend = Frontend(self.front_end_message_broker)
+        
+        # Create Quart app with logging disabled
         self.app = Quart(__name__)
+        self.app.logger.setLevel(logging.WARNING)  # Set main app logger to WARNING
+        
+        # Disable all Quart loggers
+        logging.getLogger('quart').setLevel(logging.WARNING)
+        logging.getLogger('quart.app').disabled = True
+        logging.getLogger('quart.serving').disabled = True
+        
+        # Disable access log completely
+        self.app.config['LOGGER_HANDLER_POLICY'] = 'never'
+        self.app.config['LOGGER_NAME'] = None
+        
         self.app = cors(self.app)
         self.logger = logging.getLogger(__name__)
 
@@ -363,7 +371,14 @@ async def main(enable_logging):
     await web_host.start()
 
     try:
-        await web_host.app.run_task(host=web_host.ip, port=web_host.port)
+        # Replace the run_task call with this
+        config = hypercorn.Config()
+        config.bind = [f"{web_host.ip}:{web_host.port}"]
+        config.access_log_format = ""  # Disable access logs
+        config.accesslog = None
+        config.errorlog = None
+        
+        await hypercorn.asyncio.serve(web_host.app, config)
 
     except KeyboardInterrupt:
         logger.info("Shutting down...")

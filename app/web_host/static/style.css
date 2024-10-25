@@ -25,6 +25,7 @@ body {
     padding: 20px;
     display: flex;
     flex-direction: column;
+    height: calc(100vh - 40px); /* Account for padding */
 }
 
 .section {
@@ -50,31 +51,84 @@ button:hover {
     background-color: #45a049;
 }
 
+/* Controls container */
 .controls {
     display: flex;
     justify-content: space-between;
+    align-items: center;
     margin-bottom: 20px;
+    height: 40px;
+}
+
+/* Left controls with dropdown */
+.left-controls {
+    flex: 0 0 200px;
+}
+
+/* Right controls */
+.right-controls {
+    flex: 0 0 120px;
 }
 
 #gaze-toggle {
-    width: auto;  /* Allow the button to size based on content */
-    padding: 5px 10px;  /* Reduce padding */
-    font-size: 0.9em;  /* Slightly smaller font */
+    width: 100%;
+    height: 36px;
+    padding: 5px 10px;
+    font-size: 0.9em;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    cursor: pointer;
 }
 
-#video-topics, #gaze-toggle {
-    padding: 10px;
+#video-topics {
+    width: 100%;
+    height: 36px;
+    padding: 5px;
 }
 
+/* Center banner */
+.interface-banner {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    padding: 0 20px;
+    max-width: calc(100% - 340px);
+}
+
+/* Banner buttons */
+.interface-banner button {
+    width: 90%;
+    height: 36px;
+    padding: 5px 10px;
+    font-size: 0.9em;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    cursor: pointer;
+}
+
+/* Cycle buttons */
+#cycle-left-button,
+#cycle-right-button {
+    min-width: 36px;
+    width: 36px;
+    padding: 8px;
+}
+
+/* Workspace */
 #workspace {
-    flex-grow: 1;
+    flex: 1;
     background-color: #000;
     display: flex;
     justify-content: center;
     align-items: center;
     position: relative;
     overflow: hidden;
-    min-height: 480px;
+    min-height: 0;  /* Allow shrinking */
+    max-height: calc(100vh - 120px); /* Account for header and controls */
 }
 
 #video-feed {
@@ -82,31 +136,4 @@ button:hover {
     max-height: 100%;
     object-fit: contain;
     display: block;
-}
-
-interface-banner {
-    margin: 10px 0;
-    padding: 10px;
-    display: flex;
-    gap: 10px;
-    justify-content: center;
-}
-
-.interface-banner button {
-    padding: 8px 16px;
-    background-color: #4CAF50;
-    color: white;
-    border: none;
-    cursor: pointer;
-}
-
-.interface-banner button:hover {
-    background-color: #45a049;
-}
-
-/* Special styling for cycle buttons */
-#cycle-left-button,
-#cycle-right-button {
-    width: 40px;
-    padding: 8px;
 }
