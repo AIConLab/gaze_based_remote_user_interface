@@ -10,7 +10,7 @@ import asyncio
 import cv2
 import numpy as np
 
-from enum_definitions import MissionStates, MissionCommandSignals, ProcessingModes
+from enum_definitions import MissionStates, MissionCommandSignals, ProcessingModes, ProcessingModeActions
 from message_broker import MessageBroker
 
 from logging.handlers import RotatingFileHandler
@@ -61,14 +61,12 @@ def setup_logging(enable_logging):
     return root_logger
 
 
-    return root_logger
-
 
 class Backend:
     def __init__(self, message_broker: MessageBroker):
         self.message_broker = message_broker
 
-        self.processing_mode = ProcessingModes.VIDEO_RENDERING
+        self.processing_mode = None
         self.gaze_enabled_state = False
         self.mission_state = None
         self.robot_connected_state = False
@@ -79,22 +77,26 @@ class Backend:
 
     async def start(self):
         self.logger.info("Backend started")
-
+        
         # Front end subscriptions
         await self.message_broker.subscribe("Frontend/gaze_enabled_button_pressed", self.handle_gaze_enabled_button_pressed)
         await self.message_broker.subscribe("Frontend/mission_start_button_pressed", self.handle_mission_start_button_pressed)
         await self.message_broker.subscribe("Frontend/mission_pause_button_pressed", self.handle_mission_pause_button_pressed)
         await self.message_broker.subscribe("Frontend/mission_stop_button_pressed", self.handle_mission_stop_button_pressed)
         await self.message_broker.subscribe("Frontend/video_topic_selected", self.handle_video_topic_selected)
+        await self.message_broker.subscribe("Frontend/process_action_button_pressed", self.handle_processing_mode_action)
 
         # Video Renderer subscriptions
         await self.message_broker.subscribe("VideoRender/latest_rendered_frame", self.handle_latest_frame_of_selected_topic)
 
-        # ModuleDatapath subscriptions
-        await self.message_broker.subscribe("ModuleDatapath/available_video_topics", self.handle_available_video_topics)
-
         # ModuleController subscriptions
         await self.message_broker.subscribe("ModuleController/processing_mode_update", self.handle_processing_mode_update)
+        # Initialize processing mode
+        if self.processing_mode is None:
+            await self.handle_processing_mode_update(None, {"mode": ProcessingModes.VIDEO_RENDERING.name})
+
+        # ModuleDatapath subscriptions
+        await self.message_broker.subscribe("ModuleDatapath/available_video_topics", self.handle_available_video_topics)
 
         # MissionManager subscriptions
         await self.message_broker.subscribe("MissionManager/mission_state_update", self.handle_mission_state_update)
@@ -167,17 +169,24 @@ class Backend:
             self.available_video_topics = message['topics']
             await self.message_broker.publish("Backend/available_video_topics_update", {"topics": self.available_video_topics})
 
-    async def handle_processing_mode_update(self, topic, message):    
-        self.logger.debug(f"Received processing mode update: {message}")
-
-        self.processing_mode = message['mode']
-        self.message_broker.publish("Backend/processing_mode_update", {"mode": self.processing_mode})
-
     async def handle_mission_state_update(self, topic, message):
         if 'state' in message:
             self.mission_state = message['state']
             await self.message_broker.publish("Backend/mission_state_update", {"mission_state": self.mission_state})
     
+    async def handle_processing_mode_update(self, topic, message):
+        
+        self.processing_mode = message['mode']
+
+        await self.message_broker.publish("Backend/processing_mode_update", {"mode": self.processing_mode})
+        
+        self.logger.info(f"Backend: Processing mode updated: {self.processing_mode}")
+
+    async def handle_processing_mode_action(self, topic, message):
+        action = message['action']
+
+        await self.message_broker.publish("Backend/processing_mode_action", {"action": action})
+
     async def stop(self):
         self.logger.info("Backend stopping")
         self.message_broker.stop()
@@ -185,23 +194,22 @@ class Backend:
 
 class Frontend:
     def __init__(self, message_broker):
-
         self.message_broker = message_broker
         self.current_frame = None
         self.frame_buffer = asyncio.Queue(maxsize=5)
         self.frame_lock = asyncio.Lock()
         self.frame_available = asyncio.Event()
-        self.state = {
-            'processing_mode': ProcessingModes.VIDEO_RENDERING  # Default mode
-        }
+        self.state = {}
         self.logger = logging.getLogger(__name__)
-
 
     async def start(self):
         self.logger.info("Frontend started")
+
+        # Backend subscriptions
         await self.message_broker.subscribe("Backend/mission_state_update", self.handle_mission_state_update)
         await self.message_broker.subscribe("Backend/available_video_topics_update", self.handle_available_video_topics)
         await self.message_broker.subscribe("Backend/selected_topic_latest_frame", self.handle_video_frame)
+        await self.message_broker.subscribe("Backend/processing_mode_update", self.handle_processing_mode_update)
 
     async def index(self):
         return await render_template('index.html', **self.state)
@@ -230,8 +238,6 @@ class Frontend:
             self.logger.error(f"Error handling video frame: {str(e)}")
 
     async def video_feed(self):
-        self.logger.info("Video feed requested")
-
         async def generate():
             while True:
                 try:
@@ -273,16 +279,26 @@ class Frontend:
         try:
             if "gaze_button_pressed" in form:
                 await self.publish_message("Frontend/gaze_enabled_button_pressed", {'type': 'gaze_enabled_button_pressed'})
+
             elif "mission_start_button_pressed" in form:
                 await self.publish_message("Frontend/mission_start_button_pressed", {'type': 'mission_start_button_pressed'})
+
             elif "mission_pause_button_pressed" in form:
                 await self.publish_message("Frontend/mission_pause_button_pressed", {'type': 'mission_pause_button_pressed'})
+
             elif "mission_stop_button_pressed" in form:
                 await self.publish_message("Frontend/mission_stop_button_pressed", {'type': 'mission_stop_button_pressed'})
+
             elif "video_topic_selected" in form:
                 selected_topic = form.get("video_topic_selected")
-                self.logger.debug(f"Video topic selected: {selected_topic}")
                 await self.publish_message("Frontend/video_topic_selected", {'topic': selected_topic})
+
+            elif "process_action_button_press" in form:
+                action = form.get("process_action_button_pressed")
+                action_enum = ProcessingModeActions[action]
+
+                await self.publish_message(
+                    "Frontend/process_action_button_pressed", {'action': action_enum})
 
             else:
                 self.logger.warning(f"Unknown POST request: {form}")
@@ -296,6 +312,13 @@ class Frontend:
     async def handle_available_video_topics(self, topic, message):
         if 'topics' in message:
             self.state['available_video_topics'] = message['topics']
+
+    async def handle_processing_mode_update(self, topic, message):
+        # Processing mode message is a string
+        mode = message['mode']
+
+        self.state['processing_mode'] = mode
+        self.logger.info(f"Frontend: Processing mode updated: {mode}")
 
 
 class WebHost:
@@ -313,9 +336,9 @@ class WebHost:
 
     async def start(self):
         self.logger.info("Web host starting")
-        await self.backend.start()
         await self.frontend.start()
         self.setup_routes()
+        await self.backend.start()
 
     def setup_routes(self):
         self.app.route('/')(self.frontend.index)

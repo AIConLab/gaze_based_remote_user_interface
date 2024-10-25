@@ -32,12 +32,33 @@
                     <option value="{{ topic }}">{{ topic }}</option>
                     {% endfor %}
                 </select>
-                <div class="banner">
-
-
-                </div>
 
                 <button id="gaze-toggle">{% if gaze_enabled_state %}Disable{% else %}Enable{% endif %} Gaze</button>
+                
+                <div class="interface-banner">
+                    {% if processing_mode %}
+                        {% if processing_mode == 'INITIAL_FIXATION' %}
+                            <button id="segment-button">Segment</button>
+                            <button id="make-waypoint-button">Make Waypoint</button>
+                            <button id="cancel-button">Cancel</button>
+                            <button id="cancel-button">Cancel</button>
+
+                        {% elif processing_mode == 'SEGMENTATION_RESULTS' %}
+                            <button id="cycle-left-button">←</button>
+                            <button id="cycle-right-button">→</button>
+                            <button id="accept-button">Accept</button>
+                            <button id="cancel-button">Cancel</button>
+
+                        {% elif processing_mode == 'WAYPOINT_RESULTS' %}
+                            <button id="accept-button">Accept</button>
+                            <button id="cancel-button">Cancel</button>
+                        
+                        {% else %}
+                        
+                        {% endif %}
+                    {% endif %}
+                </div>
+
             </div>
             <div id="workspace">
                 <img id="video-feed" alt="Video Feed">

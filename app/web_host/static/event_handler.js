@@ -1,11 +1,30 @@
+
 document.addEventListener('DOMContentLoaded', function() {
+    // Process Action Buttons
+    const processActionButtons = {
+        'segment-button': 'SEGMENT',
+        'make-waypoint-button': 'MAKE_WAYPOINT', 
+        'cancel-button': 'CANCEL',
+        'accept-button': 'ACCEPT',
+        'cycle-left-button': 'CYCLE_LEFT',
+        'cycle-right-button': 'CYCLE_RIGHT'
+    };
+
+
+    // Video feed elements
     const videoTopicsSelect = document.getElementById('video-topics');
+    const videoFeed = document.getElementById('video-feed');
+
+    // Gaze button
     const gazeToggle = document.getElementById('gaze-toggle');
+
+    // Mission buttons
     const missionStart = document.getElementById('mission-start');
     const missionPause = document.getElementById('mission-pause');
     const missionStop = document.getElementById('mission-stop');
-    const videoFeed = document.getElementById('video-feed');
     
+
+    // Setup video feed
     function setupVideoFeed() {
         // Add timestamp to prevent caching
         const timestamp = new Date().getTime();
@@ -46,7 +65,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     
-
+    // Handle gaze toggle
     gazeToggle.addEventListener('click', function() {
         fetch('/button_press', {
             method: 'POST',
@@ -57,6 +76,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
+    // Handle mission buttons
     missionStart.addEventListener('click', function() {
         fetch('/button_press', {
             method: 'POST',
@@ -85,5 +105,22 @@ document.addEventListener('DOMContentLoaded', function() {
             },
             body: 'mission_stop_button_pressed=true'
         });
+    });
+
+
+    // Add event listeners for all process action buttons
+    Object.keys(processActionButtons).forEach(buttonId => {
+        const button = document.getElementById(buttonId);
+        if (button) {
+            button.addEventListener('click', function() {
+                fetch('/button_press', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: `process_action_button_press=${processActionButtons[buttonId]}`
+                });
+            });
+        }
     });
 });

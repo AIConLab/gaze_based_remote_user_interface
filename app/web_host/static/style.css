@@ -83,3 +83,30 @@ button:hover {
     object-fit: contain;
     display: block;
 }
+
+interface-banner {
+    margin: 10px 0;
+    padding: 10px;
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+}
+
+.interface-banner button {
+    padding: 8px 16px;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    cursor: pointer;
+}
+
+.interface-banner button:hover {
+    background-color: #45a049;
+}
+
+/* Special styling for cycle buttons */
+#cycle-left-button,
+#cycle-right-button {
+    width: 40px;
+    padding: 8px;
+}
