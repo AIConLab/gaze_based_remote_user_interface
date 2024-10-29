@@ -11,6 +11,7 @@ from datetime import datetime
 
 from message_broker import MessageBroker
 from utilities import AprilTagRenderer
+from enum_definitions import ProcessingModes, ProcessingModeActions
 
 
 def setup_logging(enable_logging):
@@ -42,15 +43,28 @@ def setup_logging(enable_logging):
         logging.getLogger(logger_name).setLevel(log_level)
 
 
+class UserInteractionRenderer:
+    def __init__(self, message_broker: MessageBroker):
+        self.message_broker = message_broker
+        self.logger = logging.getLogger(__name__)
+
+    async def start(self):
+        self.logger.info("UserInteractionRenderer started")
+
+        # Subscriptions
+
+    async def stop(self):
+        self.message_broker.stop()
+
+
 class VideoRenderer:
     def __init__(self,
                   video_fps=15, 
                   output_width=1280, 
                   output_height=720, 
                   message_broker: MessageBroker = None,
-                  max_queue_size=3  # Buffer up to 3 frames
+                  max_queue_size=5  
                   ):
-
         # Init classes
         self.message_broker = message_broker
         self.apriltag_renderer = AprilTagRenderer(
@@ -63,6 +77,7 @@ class VideoRenderer:
         
         # Processing flags
         self.render_apriltags = False
+        self.processing_mode = None
 
         # Video rendering parameters
         self.image_quality = 70
@@ -73,49 +88,59 @@ class VideoRenderer:
         # Frame synchronization
         self.frame_lock = asyncio.Lock()
         self.frame_queue = asyncio.Queue(maxsize=max_queue_size)
+
+        # Topic change event
         self.topic_change_event = asyncio.Event()
         self.current_topic = ""
+
+        # Fixation data
+        self.fixation_lock = asyncio.Lock()
+        self.fixation_queue = asyncio.Queue(maxsize=1)
+
+        self.gaze_lock = asyncio.Lock()
+        self.gaze_queue = asyncio.Queue(maxsize=max_queue_size)
         
         self.logger = logging.getLogger(__name__)
 
     async def start(self):
         self.logger.info("VideoRenderer started")
 
-
         # Start the publishing task
         asyncio.create_task(self.publish_latest_frame())
 
-
         # Datapath subscriptions
-        await self.message_broker.subscribe("ModuleDatapath/selected_topic_latest_frame", 
-                                          self.handle_selected_topic_latest_frame)
+        await self.message_broker.subscribe("ModuleDatapath/selected_topic_latest_frame", self.handle_selected_topic_latest_frame)
+        await self.message_broker.subscribe("ModuleDatapath/normalized_gaze_data", self.handle_gaze_data)
+        await self.message_broker.subscribe("ModuleDatapath/normalized_fixation_data", self.handle_fixation_data)
+
+
         
         # ModuleController subscriptions
         await self.message_broker.subscribe("ModuleController/selected_video_topic_update", self.handle_topic_update)
         await self.message_broker.subscribe("ModuleController/render_apriltags", self.handle_render_apriltags)
-
+        await self.message_broker.subscribe("ModuleController/processing_mode_update", self.handle_processing_mode_update)
 
     async def handle_selected_topic_latest_frame(self, topic, message):
         try:
             if not self.topic_change_event.is_set():
                 compressed_frame = message["frame"]
                 np_arr = np.frombuffer(compressed_frame, np.uint8)
-                
-                # Decode frame for processing
                 latest_frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
 
-                # Try to add to queue, drop oldest frame if full
+                # Non-blocking queue management
                 try:
+                    if self.frame_queue.full():
+                        try:
+                            self.frame_queue.get_nowait()
+                        except asyncio.QueueEmpty:
+                            pass
                     self.frame_queue.put_nowait(latest_frame)
                 except asyncio.QueueFull:
-                    try:
-                        self.frame_queue.get_nowait()  # Remove oldest frame
-                        await self.frame_queue.put(latest_frame)  # Add new frame
-                    except asyncio.QueueEmpty:
-                        pass  # Queue was emptied by another task
+                    pass  # Skip frame if queue is full
 
         except Exception as e:
             self.logger.error(f"Error handling incoming frame: {str(e)}")
+
 
     async def handle_topic_update(self, topic, message):
         self.logger.debug(f"Topic update received: {message}")
@@ -142,6 +167,123 @@ class VideoRenderer:
         # Update render_apriltags flag, default to False if message is invalid
         self.render_apriltags = message.get("render_apriltags", False)
 
+    async def handle_processing_mode_update(self, topic, message):
+        self.logger.debug(f"Received processing mode update: {message}")
+
+        self.processing_mode = message.get("mode", None)
+
+    async def handle_gaze_data(self, topic, message):
+        self.logger.debug(f"Received gaze data: {message}")
+
+        # Add gaze data to queue
+        async with self.gaze_lock:
+            try:
+                self.gaze_queue.put_nowait(message)
+            except asyncio.QueueFull:
+                self.gaze_queue.get_nowait()
+
+    async def handle_fixation_data(self, topic, message):
+        self.logger.debug(f"Received fixation data: {message}")
+        try:
+            # Use non-blocking put for fixation data
+            try:
+                self.fixation_queue.put_nowait(message)
+            except asyncio.QueueFull:
+                try:
+                    self.fixation_queue.get_nowait()
+                    self.fixation_queue.put_nowait(message)
+                except asyncio.QueueEmpty:
+                    pass
+            
+            # Process fixation immediately
+            await self.syncronize_fixation_and_frame()
+
+        except Exception as e:
+            self.logger.error(f"Error handling fixation data: {str(e)}")
+
+    async def syncronize_fixation_and_frame(self):
+        """Synchronize the latest frame with fixation data"""
+        try:
+            # Try to get frame non-blocking first
+            try:
+                latest_frame = self.frame_queue.get_nowait()
+            except asyncio.QueueEmpty:
+                self.logger.warning("No frame available for fixation processing")
+                return
+
+            # Try to get fixation data non-blocking
+            try:
+                latest_fixation = self.fixation_queue.get_nowait()
+            except asyncio.QueueEmpty:
+                self.logger.warning("No fixation data available")
+                return
+
+            if latest_frame is not None and latest_fixation is not None:
+                # Convert normalized fixation to pixel coordinates
+                fixation_x, fixation_y = latest_fixation["x"], latest_fixation["y"]
+                point_x, point_y = self.get_pixel_transformation(fixation_x, fixation_y, latest_frame)
+                
+                # Create frame copy for publishing
+                frame_to_publish = latest_frame.copy()
+                
+                # Publish synchronized data
+                self.logger.debug(f"VideoRenderer: Publishing fixation target at ({point_x}, {point_y})")
+                
+                # Encode frame before publishing
+                _, encoded_frame = cv2.imencode('.jpeg', frame_to_publish, 
+                                              [int(cv2.IMWRITE_JPEG_QUALITY), self.image_quality])
+                
+                await self.message_broker.publish(
+                    "VideoRenderer/fixation_target", 
+                    {
+                        "frame": encoded_frame.tobytes(),
+                        "point": {"x": point_x, "y": point_y}
+                    }
+                )
+
+        except Exception as e:
+            self.logger.error(f"Error in synchronize_fixation_and_frame: {str(e)}")
+
+    async def publish_latest_frame(self):
+        """Publishes frames to the message broker"""
+        blank_frame = None
+        try:
+            while True:
+                if self.processing_mode == ProcessingModes.VIDEO_RENDERING.name:
+                    if self.topic_change_event.is_set() or self.frame_queue.empty():
+                        if blank_frame is None:
+                            blank_frame = np.zeros((self.output_height, self.output_width, 3), np.uint8)
+                            cv2.putText(blank_frame, "Nothing to display", 
+                                    (self.output_width//2 - 100, self.output_height//2),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+                        
+                        frame_to_publish = blank_frame
+                        status = "blank"
+                    else:
+                        try:
+                            frame_to_publish = self.frame_queue.get_nowait()
+                            status = "latest"
+                        except asyncio.QueueEmpty:
+                            frame_to_publish = blank_frame
+                            status = "blank"
+
+                    # Process frame with AprilTags if enabled
+                    if status == "latest":
+                        frame_to_publish = await self.process_frame(frame_to_publish)
+
+                    # Encode frame
+                    _, encoded_out = cv2.imencode('.jpeg', frame_to_publish, 
+                                                [int(cv2.IMWRITE_JPEG_QUALITY), self.image_quality])
+                    
+                    await self.message_broker.publish("VideoRender/latest_rendered_frame", 
+                                                    {'frame': encoded_out.tobytes()})
+
+                await asyncio.sleep(1/self.video_fps)
+
+        except Exception as e:
+            self.logger.error(f"Error in publish_latest_frame: {str(e)}")
+            raise e
+
     async def process_frame(self, frame):
         """Process frame with AprilTags if enabled"""
         if frame is None:
@@ -155,60 +297,6 @@ class VideoRenderer:
 
         return frame
 
-    async def publish_latest_frame(self):
-        """Publishes frames to the message broker"""
-        blank_frame = None  # Cache blank frame
-        switching_frame = None  # Cache switching frame
-        
-        try:
-            while True:
-                async with self.frame_lock:
-                    # Check if topic change event is set
-                    if self.topic_change_event.is_set():
-                        # Create switching frame if not cached
-                        if switching_frame is None:
-                            switching_frame = np.zeros((self.output_height, self.output_width, 3), np.uint8)
-                            cv2.putText(switching_frame, "Switching video feed...", 
-                                      (self.output_width//2 - 100, self.output_height//2),
-                                      cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-                        
-                        frame_to_publish = switching_frame
-                        status = "switching"
-                        
-                    # Check if frame queue is empty
-                    elif self.frame_queue.empty():
-                        # Create blank frame if not cached
-                        if blank_frame is None:
-                            blank_frame = np.zeros((self.output_height, self.output_width, 3), np.uint8)
-                            cv2.putText(blank_frame, "No video feed selected", 
-                                      (self.output_width//2 - 100, self.output_height//2),
-                                      cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-                        
-                        frame_to_publish = blank_frame
-                        status = "blank"
-                        
-                    else:
-                        frame_to_publish = await self.frame_queue.get()
-                        status = "latest"
-
-                    # Process frame with AprilTags if enabled
-                    if status == "latest":  # Only process actual video frames
-                        frame_to_publish = await self.process_frame(frame_to_publish)
-
-                    # Encode frame
-                    _, encoded_out = cv2.imencode('.jpeg', frame_to_publish, 
-                                                [int(cv2.IMWRITE_JPEG_QUALITY), self.image_quality])
-                    
-                    await self.message_broker.publish("VideoRender/latest_rendered_frame", 
-                                                    {'frame': encoded_out.tobytes()})
-                    
-
-                await asyncio.sleep(1/self.video_fps)
-
-        except Exception as e:
-            self.logger.error(f"Error in publish_latest_frame: {str(e)}")
-            raise e
-
     def frame_reshape(self, frame):
         h, w = frame.shape[:2]
         aspect = w/h
@@ -221,6 +309,17 @@ class VideoRenderer:
         
         return cv2.resize(frame, (new_width, new_height))
 
+    def get_pixel_transformation(self, norm_x, norm_y, frame):
+        # Convert to pixel coordinates
+        # Pupil fixation surface coordinate origin at bottom left corner
+        # But OpenCV origin is at top left corner and goes down
+        # For easier processing we send point in the same coordinate system as OpenCV
+        h, w = frame.shape[:2]
+        pixel_x = int(norm_x * w)
+        pixel_y = int((1 - norm_y) * h)
+
+        return pixel_x, pixel_y
+
     async def stop(self):
         self.topic_change_event.set()  # Signal stop
         self.message_broker.stop()
@@ -229,14 +328,26 @@ class VideoRenderer:
 class ModuleController:
     def __init__(self, message_broker: MessageBroker):
         self.message_broker = message_broker
+
         self.selected_video_topic = ""
         self.gaze_enabled = False
+
+        self.latest_fixation_target = None
+
         self.logger = logging.getLogger(__name__)
 
     async def start(self):
+
         self.logger.info("ModuleController started")
+
+        # Backend subs
         await self.message_broker.subscribe("Backend/selected_video_topic_update", self.handle_selected_video_topic_update)
         await self.message_broker.subscribe("Backend/gaze_enabled_state_update", self.handle_gaze_enabled_state_update)
+        await self.message_broker.subscribe("Backend/processing_mode_action", self.handle_processing_mode_action)
+
+        # Video render subs
+        await self.message_broker.subscribe("VideoRenderer/fixation_target", self.handle_fixation_target)
+
 
     async def handle_selected_video_topic_update(self, topic, message):
         self.logger.debug(f"ModuleController: Received selected video topic update: {message}")
@@ -255,6 +366,26 @@ class ModuleController:
 
         # Publish render_apriltags msg
         await self.message_broker.publish("ModuleController/render_apriltags", {"render_apriltags": self.gaze_enabled})
+
+    async def handle_processing_mode_action(self, topic, message):
+        action = message.get("action", None)
+
+        self.logger.debug(f"Received action command: {action}")
+
+        if action == ProcessingModeActions.CANCEL.name:
+            await self.message_broker.publish("ModuleController/processing_mode_update", {"mode": ProcessingModes.VIDEO_RENDERING.name})
+        
+    async def handle_fixation_target(self, topic, message):
+        self.logger.debug(f"Received fixation target: {message}")
+
+        self.latest_fixation_target = message
+
+        # Update processing mode to initial fixation
+        await self.message_broker.publish("ModuleController/processing_mode_update", {"mode": ProcessingModes.INITIAL_FIXATION.name})
+
+        # Pulish data to UserInteractionRenderer
+        await self.message_broker.publish("ModuleController/fixation_target", message)
+
 
     async def stop(self):
         self.message_broker.stop()
@@ -277,8 +408,8 @@ class ModuleDatapath:
         await self.message_broker.subscribe("WebcamModule/latest_frame", self.handle_incoming_stream)
 
         # Pupil subs
-        await self.message_broker.subscribe("PupilMessageParser/normalized_gaze_data", self.handle_pupil_normalized_gaze_data)
-        await self.message_broker.subscribe("PupilMessageParser/normalized_fixation_data", self.handle_pupil_normalized_fixation_data)
+        await self.message_broker.subscribe("PupilMessageParser/normalized_gaze_data", self.publish_pupil_normalized_gaze_data)
+        await self.message_broker.subscribe("PupilMessageParser/normalized_fixation_data", self.publish_pupil_normalized_fixation_data)
         
         # ModuleController subs
         await self.message_broker.subscribe("ModuleController/selected_video_topic_update", self.handle_selected_video_topic_update)
@@ -295,7 +426,7 @@ class ModuleDatapath:
         """
         try:
             if topic not in self.video_topics:
-                self.logger.info(f"New video topic detected: {topic}")
+                self.logger.debug(f"New video topic detected: {topic}")
                 self.video_topics.add(topic)
 
             if topic == self.selected_video_topic:
@@ -309,11 +440,14 @@ class ModuleDatapath:
 
         self.selected_video_topic = message["topic"]
 
-    async def handle_pupil_normalized_gaze_data(self, topic, message):
-        self.logger.debug(f"Received normalized gaze data: {message}")
+    async def publish_pupil_normalized_gaze_data(self, topic, message):
+        self.logger.debug(f"ModuleDatapath: Publishing normalized gaze data {message}")
+        await self.message_broker.publish("ModuleDatapath/normalized_gaze_data", message)
 
-    async def handle_pupil_normalized_fixation_data(self, topic, message):
-        self.logger.debug(f"Received normalized fixation data: {message}")
+    async def publish_pupil_normalized_fixation_data(self, topic, message):
+        self.logger.debug(f"ModuleDatapath: Publishing normalized fixation data {message}")
+        await self.message_broker.publish("ModuleDatapath/normalized_fixation_data", message)
+
 
     async def stop(self):
         self.message_broker.stop()
@@ -396,10 +530,13 @@ async def main(enable_logging):
         logger = logging.getLogger(__name__)
         logger.info("Module Processor starting")
 
+        ui_renderer_message_broker = MessageBroker(1024)
         video_renderer_message_broker = MessageBroker(1024)
         module_controller_message_broker = MessageBroker(1024)
         module_datapath_message_broker = MessageBroker(1024*4)
         webcam_module_message_broker = MessageBroker(1024)
+
+        ui_renderer = UserInteractionRenderer(message_broker=ui_renderer_message_broker)
 
         video_renderer = VideoRenderer(video_fps=30, 
                                 message_broker=video_renderer_message_broker,
@@ -416,6 +553,7 @@ async def main(enable_logging):
                                 output_height=720)
 
         await asyncio.gather(
+            ui_renderer.start(),
             video_renderer.start(),
             module_controller.start(),
             module_datapath.start(),

@@ -78,14 +78,19 @@ class Backend:
         await self.message_broker.subscribe("Frontend/video_topic_selected", self.handle_video_topic_selected)
         await self.message_broker.subscribe("Frontend/process_action_button_pressed", self.handle_processing_mode_action)
 
+        """
+        Note: We are subscribing to the latest frame from both UI Renderer and Video Renderer as only one of them will be active at a time.
+
+        This is controlled by the Processing Mode in the ModuleProcessor.
+        """
+        # UI Renderer subscriptions
+        await self.message_broker.subscribe("UserInteractionRenderer/latest_rendered_frame", self.handle_latest_frame)
+
         # Video Renderer subscriptions
-        await self.message_broker.subscribe("VideoRender/latest_rendered_frame", self.handle_latest_frame_of_selected_topic)
+        await self.message_broker.subscribe("VideoRender/latest_rendered_frame", self.handle_latest_frame)
 
         # ModuleController subscriptions
         await self.message_broker.subscribe("ModuleController/processing_mode_update", self.handle_processing_mode_update)
-        # Initialize processing mode
-        if self.processing_mode is None:
-            await self.handle_processing_mode_update(None, {"mode": ProcessingModes.VIDEO_RENDERING.name})
 
         # ModuleDatapath subscriptions
         await self.message_broker.subscribe("ModuleDatapath/available_video_topics", self.handle_available_video_topics)
@@ -93,8 +98,22 @@ class Backend:
         # MissionManager subscriptions
         await self.message_broker.subscribe("MissionManager/mission_state_update", self.handle_mission_state_update)
 
+        # Initial publisher
+        # Loop until processing mode is set, this is in case Backend initializes before ModuleProcessor
+        asyncio.create_task(self.initialize_state())
+
+    async def initialize_state(self): 
+
+        while self.processing_mode is None:
+            # Send just name so string can be serialized
+            await self.message_broker.publish("Backend/processing_mode_action", {"action": ProcessingModeActions.CANCEL.name})
+
+            # Add delay to prevent flooding message
+            await asyncio.sleep(1)
+
+
     async def handle_gaze_enabled_button_pressed(self, topic, message):
-        self.logger.info("Gaze enabled button pressed")
+        self.logger.debug("Gaze enabled button pressed")
 
         self.gaze_enabled_state = not self.gaze_enabled_state
 
@@ -150,10 +169,10 @@ class Backend:
             # Publish to ModuleController
             await self.message_broker.publish("Backend/selected_video_topic_update", {"topic": self.selected_video_topic})
 
-    async def handle_latest_frame_of_selected_topic(self, topic, message):
+    async def handle_latest_frame(self, topic, message):
         frame = message['frame']
 
-        await self.message_broker.publish("Backend/selected_topic_latest_frame", {"frame": frame})
+        await self.message_broker.publish("Backend/latest_frame", {"frame": frame})
 
     async def handle_available_video_topics(self, topic, message):
         if 'topics' in message:
@@ -201,7 +220,7 @@ class Frontend:
         # Backend subscriptions
         await self.message_broker.subscribe("Backend/mission_state_update", self.handle_mission_state_update)
         await self.message_broker.subscribe("Backend/available_video_topics_update", self.handle_available_video_topics)
-        await self.message_broker.subscribe("Backend/selected_topic_latest_frame", self.handle_video_frame)
+        await self.message_broker.subscribe("Backend/latest_frame", self.handle_video_frame)
         await self.message_broker.subscribe("Backend/processing_mode_update", self.handle_processing_mode_update)
 
     async def index(self):
@@ -313,7 +332,7 @@ class Frontend:
         mode = message['mode']
 
         self.state['processing_mode'] = mode
-        self.logger.info(f"Frontend: Processing mode updated: {mode}")
+        self.logger.debug(f"Frontend: Processing mode updated: {mode}")
 
 
 class WebHost:
