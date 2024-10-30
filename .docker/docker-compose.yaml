@@ -85,7 +85,7 @@ services:
     group_add:
       - plugdev
       - video
-    command: "/pupil_module/start.sh"
+    command: "/pupil_module/start.sh" # debug arg can be added to start.sh
 
 
 networks:

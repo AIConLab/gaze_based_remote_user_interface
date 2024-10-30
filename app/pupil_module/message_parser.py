@@ -1,4 +1,5 @@
 import zmq
+import numpy as np
 import msgpack
 import logging
 import os
@@ -107,7 +108,10 @@ class PupilMessageParser:
             # Connect subscriber
             self.pupil_subscriber = self.pupil_context.socket(zmq.SUB)
             self.pupil_subscriber.connect(f'tcp://{self.pupil_ip}:{sub_port}')
+
+            # Subscribe to relevant topics
             self.pupil_subscriber.subscribe('surfaces')
+            self.pupil_subscriber.subscribe('frame.world')
 
             self.logger.info(f"Connected to Pupil Capture on ports {self.pupil_port}/{sub_port}")
         except Exception as e:
@@ -123,6 +127,17 @@ class PupilMessageParser:
                     topic = self.pupil_subscriber.recv_string()
                     payload = msgpack.unpackb(self.pupil_subscriber.recv(), raw=False)
                     
+                    # Handle additional frame data if present
+                    extra_frames = []
+                    while self.pupil_subscriber.get(zmq.RCVMORE):
+                        extra_frames.append(self.pupil_subscriber.recv())
+                    if extra_frames:
+                        payload["__raw_data__"] = extra_frames
+
+                    # Process frame data
+                    if topic.startswith('frame.world'):
+                        await self._publish_worldview_frame(payload)
+
                     # Process surface data
                     if payload.get('name') == self.surface_name:
                         await self._publish_gaze_data(payload)
@@ -132,7 +147,25 @@ class PupilMessageParser:
                 
             except Exception as e:
                 self.logger.error(f"Error processing message: {e}")
-                await asyncio.sleep(1)  # Delay before retry
+                await asyncio.sleep(0.1)
+
+    async def _publish_worldview_frame(self, payload):
+        """Process and publish world camera frame"""
+        try:
+            if '__raw_data__' in payload:
+                raw_data = payload['__raw_data__'][0]
+                
+                # Create frame message with JPEG encoded data
+                message = {
+                    'topic': 'PupilMessageParser',
+                    'frame': raw_data  # Raw data is already JPEG encoded
+                }
+                
+                await self.message_broker.publish('PupilMessageParser/world_frame', message)
+                self.logger.debug(f"Published frame at {payload.get('timestamp')}")
+                    
+        except Exception as e:
+            self.logger.error(f"Error processing frame: {e}")
 
     async def _publish_gaze_data(self, payload):
         """Extract and publish gaze data"""
@@ -203,13 +236,12 @@ class PupilMessageParser:
 async def main(enable_logging):
     try:
         setup_logging(enable_logging)
-        message_broker = MessageBroker(1024)
+        message_broker = MessageBroker(1024 * 2)
         parser = PupilMessageParser(message_broker=message_broker)
         await parser.start()
 
     except Exception as e:
         logging.error(f"Error starting message parser: {e}")
-
 
     finally:
         await parser.stop()
