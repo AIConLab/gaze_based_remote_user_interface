@@ -655,7 +655,6 @@ class ModuleDatapath:
         self.logger.debug(f"ModuleDatapath: Publishing normalized fixation data {message}")
         await self.message_broker.publish("ModuleDatapath/normalized_fixation_data", message)
 
-
     async def stop(self):
         self.message_broker.stop()
 
