@@ -44,14 +44,198 @@ def setup_logging(enable_logging):
 
 
 class UserInteractionRenderer:
-    def __init__(self, message_broker: MessageBroker):
+    def __init__(self,
+                  video_fps=15,
+                  output_width=1280,
+                  output_height=720,
+                  message_broker: MessageBroker = None
+    ):
         self.message_broker = message_broker
+
+        # Video rendering parameters
+        self.output_width = output_width
+        self.output_height = output_height
+        self.video_fps = video_fps
+
+        # State variables
+        self.processing_mode = None
+
+        # Segmentation results data structure
+        self.segmentation_results = {"frame" : None,
+                                     "masks" : []}
+        self.current_mask_index = 0
+        self.latest_rendered_segmentation_frames = []
+
+
+        # OCR results data structure
+        self.ocr_results = {"longitude" : None, 
+                            "latitude" : None}
+        self.latest_rendered_ocr_frame = None
+
+        # Fixation data
+        self.fixation_data = {"frame": None,
+                              "x": None, 
+                              "y": None}
+        self.latest_rendered_fixation_frame = None
+
+        # Loading animation setup
+        self.loading_frames = []
+        self.current_loading_frame = 0
+        self.loading_frame_count = 8  # Number of rotation steps
+        self.setup_loading_animation()
+
         self.logger = logging.getLogger(__name__)
 
     async def start(self):
         self.logger.info("UserInteractionRenderer started")
 
-        # Subscriptions
+        # Start the publishing task
+        asyncio.create_task(self.publish_latest_frame())
+
+        # ModuleController subscriptions
+        await self.message_broker.subscribe("ModuleController/processing_mode_update", self.handle_processing_mode_update)
+        await self.message_broker.subscribe("ModuleController/fixation_target", self.handle_fixation_target)
+        await self.message_broker.subscribe("ModuleController/segmentation_results", self.handle_segmentation_results)
+        await self.message_broker.subscribe("ModuleController/ocr_results", self.handle_ocr_results)
+        await self.message_broker.subscribe("ModuleController/cycle_segmentation_result", self.handle_cycle_segmentation_result)
+
+    async def handle_processing_mode_update(self, topic, message):
+        self.logger.debug(f"Received processing mode update: {message}")
+
+        self.processing_mode = message.get("mode", None)
+
+    async def handle_fixation_target(self, topic, message): 
+        self.logger.debug(f"Received fixation target: {message}")
+
+        self.fixation_data["frame"] = message.get("frame", None)
+        self.fixation_data["x"] = message.get("point", {}).get("x", None)
+        self.fixation_data["y"] = message.get("point", {}).get("y", None)
+
+        await self.process_fixation_frame()
+
+    async def handle_segmentation_results(self, topic, message):
+        self.logger.debug(f"Received segmentation results: {message}")
+
+        self.segmentation_results["frame"] = message.get("frame", None)
+
+        self.segmentation_results["masks"] = message.get("masks", [])
+
+        await self.process_segmentation_results()
+
+    async def handle_ocr_results(self, topic, message):
+        self.logger.debug(f"Received OCR results: {message}")
+
+        self.ocr_results["longitude"] = message.get("longitude", None)
+        self.ocr_results["latitude"] = message.get("latitude", None)
+
+        await self.process_ocr_results()
+
+    async def handle_cycle_segmentation_result(self, topic, message):
+        self.logger.debug(f"Received cycle segmentation result: {message}")
+
+        direction = message.get("direction", None)
+
+        if direction == "left":
+            self.current_mask_index = (self.current_mask_index - 1) % len(self.segmentation_results["masks"])
+        elif direction == "right":
+            self.current_mask_index = (self.current_mask_index + 1) % len(self.segmentation_results["masks"])
+
+    async def publish_latest_frame(self):
+        while True:
+            try:
+                if self.processing_mode == ProcessingModes.INITIAL_FIXATION.name:
+                    if self.latest_rendered_fixation_frame is not None:
+                        # Encode frame before publishing
+                        _, encoded_frame = cv2.imencode('.jpeg', self.latest_rendered_fixation_frame, 
+                                                      [int(cv2.IMWRITE_JPEG_QUALITY), 70])
+                        
+                        await self.message_broker.publish("UserInteractionRenderer/latest_rendered_frame", 
+                                                        {'frame': encoded_frame.tobytes()})
+
+                elif self.processing_mode == ProcessingModes.PROCESSING.name:
+
+                    # Show animated loading frame
+                    loading_frame = self.loading_frames[self.current_loading_frame].copy()
+                    self.current_loading_frame = (self.current_loading_frame + 1) % self.loading_frame_count
+                    
+                    _, encoded_frame = cv2.imencode('.jpeg', loading_frame, 
+                                                  [int(cv2.IMWRITE_JPEG_QUALITY), 70])
+
+                    await self.message_broker.publish("UserInteractionRenderer/latest_rendered_frame", {'frame': encoded_frame.tobytes()})
+
+                elif self.processing_mode == ProcessingModes.SEGMENTATION_RESULTS.name:
+                    if self.latest_rendered_segmentation_frames:
+                        # Encode frame before publishing
+                        _, encoded_frame = cv2.imencode('.jpeg', self.latest_rendered_segmentation_frames[self.current_mask_index], 
+                                                      [int(cv2.IMWRITE_JPEG_QUALITY), 70])
+                        
+                        await self.message_broker.publish("UserInteractionRenderer/latest_rendered_frame", 
+                                                        {'frame': encoded_frame.tobytes()})
+                    
+                elif self.processing_mode == ProcessingModes.WAYPOINT_RESULTS.name:
+                    if self.latest_rendered_ocr_frame is not None:
+                        # Encode frame before publishing
+                        _, encoded_frame = cv2.imencode('.jpeg', self.latest_rendered_ocr_frame, 
+                                                      [int(cv2.IMWRITE_JPEG_QUALITY), 70])
+                        
+                        await self.message_broker.publish("UserInteractionRenderer/latest_rendered_frame", 
+                                                        {'frame': encoded_frame.tobytes()})
+
+                await asyncio.sleep(1/self.video_fps)
+
+            except Exception as e:
+                self.logger.error(f"Error in publish_latest_frame: {str(e)}")
+                raise e
+    
+    async def process_fixation_frame(self):
+        if self.fixation_data["frame"] is not None:
+            # Decode the bytes back into an image
+            np_arr = np.frombuffer(self.fixation_data["frame"], np.uint8)
+            frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+            
+            self.latest_rendered_fixation_frame = frame.copy()
+            
+            if self.fixation_data["x"] is not None and self.fixation_data["y"] is not None:
+                # Draw fixation point on frame
+                point_x, point_y = self.fixation_data["x"], self.fixation_data["y"]
+                cv2.circle(self.latest_rendered_fixation_frame, (point_x, point_y), 10, (0, 0, 255), -1)
+        else:
+            raise ValueError("Invalid fixation frame")
+
+    async def process_segmentation_results(self):
+        # TODO: Implement segmentation results processing when available
+        pass
+
+    async def process_ocr_results(self):
+        # TODO: Implement OCR results processing when available
+        pass
+
+    def setup_loading_animation(self):
+        """Creates a sequence of rotated loading frames"""
+        # Create base loading frame
+        base_frame = np.zeros((self.output_height, self.output_height, 3), dtype=np.uint8)
+        center = (self.output_width // 2, self.output_height // 2)
+        radius = min(self.output_width, self.output_height) // 8
+        
+        # Create loading indicator segments
+        for i in range(self.loading_frame_count):
+            frame = base_frame.copy()
+            angle = i * (360 // self.loading_frame_count)
+            end_angle = angle + 30  # Size of arc segment
+            
+            # Draw arc with varying intensity
+            for j in range(self.loading_frame_count):
+                curr_angle = (angle + j * (360 // self.loading_frame_count)) % 360
+                curr_end = curr_angle + 30
+                intensity = 255 - (j * (255 // self.loading_frame_count))
+                cv2.ellipse(frame, center, (radius, radius), 0, curr_angle, curr_end, 
+                           (intensity, intensity, intensity), thickness=3)
+
+            # Add text
+            cv2.putText(frame, "Processing", (self.output_width//2 - 100, self.output_height//2 + 50), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+
+            self.loading_frames.append(frame)
 
     async def stop(self):
         self.message_broker.stop()
@@ -62,8 +246,8 @@ class VideoRenderer:
                   video_fps=15, 
                   output_width=1280, 
                   output_height=720, 
-                  message_broker: MessageBroker = None,
-                  max_queue_size=5  
+                  max_queue_size=5,
+                  message_broker: MessageBroker = None
                   ):
         # Init classes
         self.message_broker = message_broker
@@ -141,7 +325,6 @@ class VideoRenderer:
         except Exception as e:
             self.logger.error(f"Error handling incoming frame: {str(e)}")
 
-
     async def handle_topic_update(self, topic, message):
         self.logger.debug(f"Topic update received: {message}")
         
@@ -201,6 +384,64 @@ class VideoRenderer:
         except Exception as e:
             self.logger.error(f"Error handling fixation data: {str(e)}")
 
+    async def publish_latest_frame(self):
+        """Publishes frames to the message broker"""
+        blank_frame = None
+        try:
+            while True:
+                if self.processing_mode == ProcessingModes.VIDEO_RENDERING.name:
+                    if self.topic_change_event.is_set() or self.frame_queue.empty():
+                        # Create blank frame if not yet created
+                        if blank_frame is None:
+                            blank_frame = np.zeros((self.output_height, self.output_width, 3), np.uint8)
+                            cv2.putText(blank_frame, "Nothing to display", 
+                                    (self.output_width//2 - 100, self.output_height//2),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+
+                       # Publish blank frame 
+                        frame_to_publish = blank_frame
+                        status = "blank"
+
+                    # Publish latest frame
+                    else:
+                        try:
+                            frame_to_publish = self.frame_queue.get_nowait()
+                            status = "latest"
+                        except asyncio.QueueEmpty:
+                            frame_to_publish = blank_frame
+                            status = "blank"
+
+                    # Process frame with AprilTags if enabled
+                    if status == "latest":
+                        frame_to_publish = await self.process_frame(frame_to_publish)
+
+                    # Encode frame
+                    _, encoded_out = cv2.imencode('.jpeg', frame_to_publish, 
+                                                [int(cv2.IMWRITE_JPEG_QUALITY), self.image_quality])
+                    
+                    await self.message_broker.publish("VideoRender/latest_rendered_frame", 
+                                                    {'frame': encoded_out.tobytes()})
+
+                await asyncio.sleep(1/self.video_fps)
+
+
+        except Exception as e:
+            self.logger.error(f"Error in publish_latest_frame: {str(e)}")
+            raise e
+
+    async def process_frame(self, frame):
+        """Process frame with AprilTags if enabled"""
+        if frame is None:
+            return frame
+            
+        if self.render_apriltags:
+            # Set frame in apriltag renderer
+            self.apriltag_renderer.set_latest_frame(frame)
+            # Get processed frame with overlays
+            return self.apriltag_renderer.get_latest_frame()
+
+        return frame
+
     async def syncronize_fixation_and_frame(self):
         """Synchronize the latest frame with fixation data"""
         try:
@@ -208,14 +449,14 @@ class VideoRenderer:
             try:
                 latest_frame = self.frame_queue.get_nowait()
             except asyncio.QueueEmpty:
-                self.logger.warning("No frame available for fixation processing")
+                self.logger.debug("No frame available for fixation processing")
                 return
 
             # Try to get fixation data non-blocking
             try:
                 latest_fixation = self.fixation_queue.get_nowait()
             except asyncio.QueueEmpty:
-                self.logger.warning("No fixation data available")
+                self.logger.debug("No fixation data available")
                 return
 
             if latest_frame is not None and latest_fixation is not None:
@@ -243,59 +484,6 @@ class VideoRenderer:
 
         except Exception as e:
             self.logger.error(f"Error in synchronize_fixation_and_frame: {str(e)}")
-
-    async def publish_latest_frame(self):
-        """Publishes frames to the message broker"""
-        blank_frame = None
-        try:
-            while True:
-                if self.processing_mode == ProcessingModes.VIDEO_RENDERING.name:
-                    if self.topic_change_event.is_set() or self.frame_queue.empty():
-                        if blank_frame is None:
-                            blank_frame = np.zeros((self.output_height, self.output_width, 3), np.uint8)
-                            cv2.putText(blank_frame, "Nothing to display", 
-                                    (self.output_width//2 - 100, self.output_height//2),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-                        
-                        frame_to_publish = blank_frame
-                        status = "blank"
-                    else:
-                        try:
-                            frame_to_publish = self.frame_queue.get_nowait()
-                            status = "latest"
-                        except asyncio.QueueEmpty:
-                            frame_to_publish = blank_frame
-                            status = "blank"
-
-                    # Process frame with AprilTags if enabled
-                    if status == "latest":
-                        frame_to_publish = await self.process_frame(frame_to_publish)
-
-                    # Encode frame
-                    _, encoded_out = cv2.imencode('.jpeg', frame_to_publish, 
-                                                [int(cv2.IMWRITE_JPEG_QUALITY), self.image_quality])
-                    
-                    await self.message_broker.publish("VideoRender/latest_rendered_frame", 
-                                                    {'frame': encoded_out.tobytes()})
-
-                await asyncio.sleep(1/self.video_fps)
-
-        except Exception as e:
-            self.logger.error(f"Error in publish_latest_frame: {str(e)}")
-            raise e
-
-    async def process_frame(self, frame):
-        """Process frame with AprilTags if enabled"""
-        if frame is None:
-            return frame
-            
-        if self.render_apriltags:
-            # Set frame in apriltag renderer
-            self.apriltag_renderer.set_latest_frame(frame)
-            # Get processed frame with overlays
-            return self.apriltag_renderer.get_latest_frame()
-
-        return frame
 
     def frame_reshape(self, frame):
         h, w = frame.shape[:2]
@@ -374,7 +562,26 @@ class ModuleController:
 
         if action == ProcessingModeActions.CANCEL.name:
             await self.message_broker.publish("ModuleController/processing_mode_update", {"mode": ProcessingModes.VIDEO_RENDERING.name})
-        
+
+        elif action == ProcessingModeActions.MAKE_WAYPOINT.name:
+            await self.message_broker.publish("ModuleController/processing_mode_update", {"mode": ProcessingModes.PROCESSING.name})
+
+        elif action == ProcessingModeActions.SEGMENT.name:
+            await self.message_broker.publish("ModuleController/processing_mode_update", {"mode": ProcessingModes.PROCESSING.name})
+
+        elif action == ProcessingModeActions.ACCEPT.name:
+            # TODO
+            pass
+
+        elif action == ProcessingModeActions.CYCLE_LEFT.name:
+            await self.message_broker.publish("ModuleController/cycle_segmentation_result", {"direction": "left"})
+
+        elif action == ProcessingModeActions.CYCLE_RIGHT.name:
+            await self.message_broker.publish("ModuleController/cycle_segmentation_result", {"direction": "right"})
+
+        else:
+            self.logger.warning(f"Received invalid action command {action}")
+
     async def handle_fixation_target(self, topic, message):
         self.logger.debug(f"Received fixation target: {message}")
 
@@ -385,7 +592,6 @@ class ModuleController:
 
         # Pulish data to UserInteractionRenderer
         await self.message_broker.publish("ModuleController/fixation_target", message)
-
 
     async def stop(self):
         self.message_broker.stop()
