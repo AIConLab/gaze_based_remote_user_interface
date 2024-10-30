@@ -611,11 +611,12 @@ class ModuleDatapath:
         self.logger.info("ModuleDatapath started")
 
         # Webcam subs
-        await self.message_broker.subscribe("WebcamModule/latest_frame", self.handle_incoming_stream)
+        await self.message_broker.subscribe("WebcamModule/latest_frame", self.handle_incoming_video_streams)
 
         # Pupil subs
         await self.message_broker.subscribe("PupilMessageParser/normalized_gaze_data", self.publish_pupil_normalized_gaze_data)
         await self.message_broker.subscribe("PupilMessageParser/normalized_fixation_data", self.publish_pupil_normalized_fixation_data)
+        await self.message_broker.subscribe("PupilMessageParser/world_frame", self.handle_incoming_video_streams)
         
         # ModuleController subs
         await self.message_broker.subscribe("ModuleController/selected_video_topic_update", self.handle_selected_video_topic_update)
@@ -626,7 +627,7 @@ class ModuleDatapath:
             await self.message_broker.publish("ModuleDatapath/available_video_topics", {"topics": list(self.video_topics)})
             await asyncio.sleep(1)
         
-    async def handle_incoming_stream(self, topic, message):
+    async def handle_incoming_video_streams(self, topic, message):
         """
         MUX incoming video streams based on selected video topic
         """
