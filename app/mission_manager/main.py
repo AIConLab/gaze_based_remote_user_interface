@@ -75,14 +75,23 @@ class RosSubHandler:
 
 
 class RosConnectionMonitor:
-    def __init__(self, message_broker: MessageBroker = None):
+    def __init__(self, 
+                 message_broker: MessageBroker = None):
+
+        self.robot_connected = False
+
+
         self.message_broker = message_broker
         self.logger = logging.getLogger(__name__)
-        self._shutdown_flag = False
-        self.robot_connected = False
         
-    async def check_robot_connection(self):
-        while not self._shutdown_flag:
+    async def start(self):
+        self.logger.info("Starting ROS Connection Monitor")
+        # Create monitoring task without node initialization
+        asyncio.create_task(self.robot_connection_heartbeat())
+
+
+    async def robot_connection_heartbeat(self):
+        while True:
             try:
                 # Get list of topics
                 topics = rospy.get_published_topics()
@@ -91,36 +100,28 @@ class RosConnectionMonitor:
                 # Check if diagnostic topic exists
                 diagnostic_exists = any(topic[0] == '/diagnostics' for topic in topics)
                 
-                if diagnostic_exists and not self.robot_connected:
+                if diagnostic_exists:
                     self.robot_connected = True
                     await self.message_broker.publish(
-                        "RosConnectionMonitor/connection_status",
+                        "RosConnectionMonitor/connection_status_update",
                         {"connected": True}
                     )
-                    self.logger.info("Robot connected")
-                elif not diagnostic_exists and self.robot_connected:
+                    self.logger.debug("Robot connected")
+
+                elif not diagnostic_exists:
                     self.robot_connected = False
+
                     await self.message_broker.publish(
-                        "RosConnectionMonitor/connection_status",
+                        "RosConnectionMonitor/connection_status_update",
                         {"connected": False}
                     )
                     self.logger.warning("Robot disconnected")
                     
             except Exception as e:
-                if self.robot_connected:
-                    self.robot_connected = False
-                    await self.message_broker.publish(
-                        "RosConnectionMonitor/connection_status",
-                        {"connected": False}
-                    )
+
                 self.logger.warning(f"Error checking robot connection: {str(e)}")
                 
-            await asyncio.sleep(1)
-
-    async def start(self):
-        self.logger.info("Starting ROS Connection Monitor")
-        # Create monitoring task without node initialization
-        asyncio.create_task(self.check_robot_connection())
+            await asyncio.sleep(5)
 
     async def stop(self):
         self._shutdown_flag = True
