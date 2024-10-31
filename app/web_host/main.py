@@ -96,7 +96,7 @@ class Backend:
         await self.message_broker.subscribe("ModuleDatapath/available_video_topics", self.handle_available_video_topics)
 
         # MissionManager subscriptions
-        await self.message_broker.subscribe("MissionManager/mission_state_update", self.handle_mission_state_update)
+        await self.message_broker.subscribe("RosConnectionMonitor/connection_status_update", self.handle_robot_connection_status_update)
 
         # Initial publisher
         # Loop until processing mode is set, this is in case Backend initializes before ModuleProcessor
@@ -110,7 +110,6 @@ class Backend:
 
             # Add delay to prevent flooding message
             await asyncio.sleep(1)
-
 
     async def handle_gaze_enabled_button_pressed(self, topic, message):
         self.logger.debug("Gaze enabled button pressed")
@@ -179,11 +178,6 @@ class Backend:
             self.available_video_topics = message['topics']
             await self.message_broker.publish("Backend/available_video_topics_update", {"topics": self.available_video_topics})
 
-    async def handle_mission_state_update(self, topic, message):
-        if 'state' in message:
-            self.mission_state = message['state']
-            await self.message_broker.publish("Backend/mission_state_update", {"mission_state": self.mission_state})
-    
     async def handle_processing_mode_update(self, topic, message):
         
         self.processing_mode = message['mode']
@@ -198,6 +192,14 @@ class Backend:
         await self.message_broker.publish("Backend/processing_mode_action", {"action": action})
 
         self.logger.debug(f"Backend: Processing mode action: {action}")
+
+    async def handle_robot_connection_status_update(self, topic, message):
+        self.logger.debug(f"Received robot connection status update: {message}")
+
+        if message['connected'] != self.robot_connected_state:
+            self.robot_connected_state = message['connected']
+
+            await self.message_broker.publish("Backend/robot_connection_status", {"connected": self.robot_connected_state})
 
     async def stop(self):
         self.logger.info("Backend stopping")
@@ -222,6 +224,7 @@ class Frontend:
         await self.message_broker.subscribe("Backend/available_video_topics_update", self.handle_available_video_topics)
         await self.message_broker.subscribe("Backend/latest_frame", self.handle_video_frame)
         await self.message_broker.subscribe("Backend/processing_mode_update", self.handle_processing_mode_update)
+        await self.message_broker.subscribe("Backend/robot_connection_status", self.handle_robot_connection_status)
 
     async def index(self):
         return await render_template('index.html', **self.state)
@@ -248,6 +251,22 @@ class Frontend:
 
         except Exception as e:
             self.logger.error(f"Error handling video frame: {str(e)}")
+
+    async def handle_mission_state_update(self, topic, message):
+        if 'mission_state' in message:
+            self.state['mission_state'] = message['mission_state']
+
+    async def handle_available_video_topics(self, topic, message):
+        if 'topics' in message:
+            self.state['available_video_topics'] = message['topics']
+
+    async def handle_processing_mode_update(self, topic, message):
+        # Processing mode message is a string
+        mode = message['mode']
+
+        self.state['processing_mode'] = mode
+        self.logger.debug(f"Frontend: Processing mode updated: {mode}")
+
 
     async def video_feed(self):
         async def generate():
@@ -319,31 +338,23 @@ class Frontend:
         except Exception as e:
             self.logger.error(f"Error handling POST request: {str(e)}")
 
-    async def handle_mission_state_update(self, topic, message):
-        if 'mission_state' in message:
-            self.state['mission_state'] = message['mission_state']
+    async def handle_robot_connection_status(self, topic, message):
+        self.state['robot_connected'] = message['connected']
 
-    async def handle_available_video_topics(self, topic, message):
-        if 'topics' in message:
-            self.state['available_video_topics'] = message['topics']
-
-    async def handle_processing_mode_update(self, topic, message):
-        # Processing mode message is a string
-        mode = message['mode']
-
-        self.state['processing_mode'] = mode
-        self.logger.debug(f"Frontend: Processing mode updated: {mode}")
+    async def stop(self):
+        self.logger.info("Frontend stopping")
+        self.message_broker.stop()
 
 
 class WebHost:
     def __init__(self, ip: str, port: int):
         self.ip = ip
         self.port = port
-        self.front_end_message_broker = MessageBroker(1024)
+        self.frontend_message_broker = MessageBroker(1024)
         self.backend_message_broker = MessageBroker(1024)
 
         self.backend = Backend(self.backend_message_broker)
-        self.frontend = Frontend(self.front_end_message_broker)
+        self.frontend = Frontend(self.frontend_message_broker)
         
         # Create Quart app with logging disabled
         self.app = Quart(__name__)
@@ -377,7 +388,7 @@ class WebHost:
         self.app.run(host=self.ip, port=self.port, debug=False, use_reloader=False)
 
     def stop(self):
-        self.front_end.stop()
+        self.frontend.stop()
         self.backend.stop()
 
 
