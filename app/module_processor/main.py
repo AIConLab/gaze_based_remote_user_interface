@@ -39,7 +39,7 @@ def setup_logging(enable_logging):
         logging.getLogger().addHandler(file_handler)
 
     # Set the level for specific loggers
-    for logger_name in ['WebcamModule', 'VideoRenderer', 'ModuleController', 'ModuleDatapath']:
+    for logger_name in ['WebcamModule', 'VideoRenderer', 'ModuleController', 'ModuleDatapath', 'UserInteractionRenderer']:
         logging.getLogger(logger_name).setLevel(log_level)
 
 
