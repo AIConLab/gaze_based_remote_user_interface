@@ -201,8 +201,6 @@ class Backend:
 
             await self.message_broker.publish("Backend/robot_connection_status", {"connected": self.robot_connected_state})
 
-
-
     async def stop(self):
         self.logger.info("Backend stopping")
         self.message_broker.stop()

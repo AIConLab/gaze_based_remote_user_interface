@@ -11,6 +11,7 @@ from datetime import datetime
 
 import rospy
 from diagnostic_msgs.msg import DiagnosticArray
+from sensor_msgs.msg import CompressedImage
 
 
 from message_broker import MessageBroker
@@ -62,17 +63,123 @@ class RosPubHandler:
 
 class RosSubHandler:
     def __init__(self,
+                 image_quality: int = 50,
                  message_broker: MessageBroker = None):
-
+        
+        self.image_quality = image_quality
+        self.front_realsense_sub = None
+        self.rear_realsense_sub = None
+        self.axis_sub = None
         self.message_broker = message_broker
         self.logger = logging.getLogger(__name__)
+        self.loop = None
 
     async def start(self):
-        pass
+        # Store reference to the event loop
+        self.loop = asyncio.get_running_loop()
+        
+        # Initialize ROS node
+        try:
+            rospy.init_node('camera_subscriber', anonymous=True)
+        except rospy.ROSException:
+            self.logger.info("ROS node already initialized")
+        
+        self.logger.info("Starting ROS subscribers...")
+        
+        # Initialize subscribers
+        self.front_realsense_sub = rospy.Subscriber(
+            "/front_realsense/color/image_raw/compressed", 
+            CompressedImage, 
+            self.handle_front_realsense_frame,
+            queue_size=1
+        )
+        self.logger.info("Subscribed to front realsense topic")
+
+        self.rear_realsense_sub = rospy.Subscriber(
+            "/rear_realsense/color/image_raw/compressed", 
+            CompressedImage, 
+            self.handle_rear_realsense_frame,
+            queue_size=1
+        )
+        self.logger.info("Subscribed to rear realsense topic")
+
+        self.axis_sub = rospy.Subscriber(
+            "/axis/image_raw/compressed", 
+            CompressedImage, 
+            self.handle_axis_frame,
+            queue_size=1
+        )
+        self.logger.info("Subscribed to axis topic")
+
+    def handle_front_realsense_frame(self, msg):
+        try:
+            self.logger.debug("Handling front realsense frame")
+            compressed_jpeg = self.convert_ros_image_to_compressed_jpeg(msg)
+            if compressed_jpeg:
+                message = {"frame": compressed_jpeg}
+                future = asyncio.run_coroutine_threadsafe(
+                    self.message_broker.publish("RosSubHandler/front_realsense_frame", message),
+                    self.loop
+                )
+                future.result()
+        except Exception as e:
+            self.logger.error(f"Error in front realsense handler: {str(e)}")
+
+    def handle_rear_realsense_frame(self, msg):
+        try:
+            self.logger.debug("Handling rear realsense frame")
+            compressed_jpeg = self.convert_ros_image_to_compressed_jpeg(msg)
+            if compressed_jpeg:
+                message = {"frame": compressed_jpeg}
+                future = asyncio.run_coroutine_threadsafe(
+                    self.message_broker.publish("RosSubHandler/rear_realsense_frame", message),
+                    self.loop
+                )
+                future.result()
+        except Exception as e:
+            self.logger.error(f"Error in rear realsense handler: {str(e)}")
+
+    def handle_axis_frame(self, msg):
+        try:
+            self.logger.debug("Handling axis frame")
+            compressed_jpeg = self.convert_ros_image_to_compressed_jpeg(msg)
+            if compressed_jpeg:
+                message = {"frame": compressed_jpeg}
+                future = asyncio.run_coroutine_threadsafe(
+                    self.message_broker.publish("RosSubHandler/axis_frame", message),
+                    self.loop
+                )
+                future.result()
+        except Exception as e:
+            self.logger.error(f"Error in axis handler: {str(e)}")
+
+    def convert_ros_image_to_compressed_jpeg(self, msg):
+        try:
+            frame = cv2.imdecode(np.frombuffer(msg.data, np.uint8), cv2.IMREAD_COLOR)
+            if frame is None:
+                self.logger.error("Failed to decode image data")
+                return None
+
+            _, encoded_out = cv2.imencode('.jpeg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), self.image_quality])
+            if not _:
+                self.logger.error("Failed to encode image to JPEG")
+                return None
+
+            self.logger.debug("Successfully converted ROS image to compressed JPEG")
+            return encoded_out.tobytes()
+
+        except Exception as e:
+            self.logger.error(f"Error converting ROS image to compressed jpeg: {str(e)}")
+            return None
 
     async def stop(self):
-        pass
-
+        if self.front_realsense_sub:
+            self.front_realsense_sub.unregister()
+        if self.rear_realsense_sub:
+            self.rear_realsense_sub.unregister()
+        if self.axis_sub:
+            self.axis_sub.unregister()
+        self.logger.info("Unregistered all subscribers")
 
 class RosConnectionMonitor:
     def __init__(self, 
@@ -140,7 +247,8 @@ async def main(enable_logging):
 
         # Make handlers
         ros_pub_handler = RosPubHandler(ros_pub_message_broker)
-        ros_sub_handler = RosSubHandler(ros_sub_message_broker)
+        ros_sub_handler = RosSubHandler(message_broker=ros_sub_message_broker,
+                                        image_quality=50)
         ros_connection_monitor = RosConnectionMonitor(ros_connection_monitor_message_broker)
 
         await asyncio.gather(

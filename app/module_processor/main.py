@@ -617,6 +617,11 @@ class ModuleDatapath:
         await self.message_broker.subscribe("PupilMessageParser/normalized_gaze_data", self.publish_pupil_normalized_gaze_data)
         await self.message_broker.subscribe("PupilMessageParser/normalized_fixation_data", self.publish_pupil_normalized_fixation_data)
         await self.message_broker.subscribe("PupilMessageParser/world_frame", self.handle_incoming_video_streams)
+
+        # Ros Sub handler subs
+        await self.message_broker.subscribe("RosSubHandler/rear_realsense_frame", self.handle_incoming_video_streams)
+        await self.message_broker.subscribe("RosSubHandler/front_realsense_frame", self.handle_incoming_video_streams)
+        await self.message_broker.subscribe("RosSubHandler/axis_frame", self.handle_incoming_video_streams)
         
         # ModuleController subs
         await self.message_broker.subscribe("ModuleController/selected_video_topic_update", self.handle_selected_video_topic_update)
