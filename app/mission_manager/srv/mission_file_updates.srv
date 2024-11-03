@@ -1,0 +1,6 @@
+string mission_name
+string waypoint_names
+string waypoint_data
+---
+bool success
+string message

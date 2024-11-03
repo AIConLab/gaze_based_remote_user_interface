@@ -97,18 +97,31 @@ class Backend:
 
         # MissionManager subscriptions
         await self.message_broker.subscribe("RosConnectionMonitor/connection_status_update", self.handle_robot_connection_status_update)
+        await self.message_broker.subscribe("RosServiceHandler/current_state", self.handle_mission_state_update)
 
         # Initial publisher
         # Loop until processing mode is set, this is in case Backend initializes before ModuleProcessor
-        asyncio.create_task(self.initialize_state())
+        asyncio.create_task(self.initialize_app_state())
 
-    async def initialize_state(self): 
+        # Initialize the robot mission state by requesting service
+        asyncio.create_task(self.request_mission_state())
+
+    async def initialize_app_state(self): 
 
         while self.processing_mode is None:
             # Send just name so string can be serialized
             await self.message_broker.publish("Backend/processing_mode_action", {"action": ProcessingModeActions.CANCEL.name})
 
             # Add delay to prevent flooding message
+            await asyncio.sleep(1)
+
+    async def request_mission_state(self):
+        self.logger.debug("Requesting mission state")
+
+        while self.mission_state is None:
+
+            await self.message_broker.publish("Backend/mission_state_request", {})
+
             await asyncio.sleep(1)
 
     async def handle_gaze_enabled_button_pressed(self, topic, message):
@@ -200,6 +213,11 @@ class Backend:
             self.robot_connected_state = message['connected']
 
             await self.message_broker.publish("Backend/robot_connection_status", {"connected": self.robot_connected_state})
+
+    async def handle_mission_state_update(self, topic, message):
+        self.mission_state = message['state']
+
+        await self.message_broker.publish("Backend/mission_state_update", {"mission_state": self.mission_state})
 
     async def stop(self):
         self.logger.info("Backend stopping")

@@ -9,14 +9,16 @@ import os
 import argparse
 from datetime import datetime
 
+
 import rospy
+from rospy import ServiceProxy
 from diagnostic_msgs.msg import DiagnosticArray
 from sensor_msgs.msg import CompressedImage
+from ugv_mission_pkg.srv import mission_commands, mission_states  # Import the actual service types
 
 
 from message_broker import MessageBroker
-from enum_definitions import ProcessingModes, ProcessingModeActions
-
+from enum_definitions import ProcessingModes, ProcessingModeActions, MissionStates
 
 def setup_logging(enable_logging):
     if enable_logging:
@@ -43,22 +45,64 @@ def setup_logging(enable_logging):
         logging.getLogger().addHandler(file_handler)
 
     # Set the level for specific loggers
-    for logger_name in ['RosPubHandler', 'RosSubHandler', 'RemoteConnectionHealthMonitor']:
+    for logger_name in ['RosServiceHandler', 'RosSubHandler', 'RemoteConnectionHealthMonitor']:
         logging.getLogger(logger_name).setLevel(log_level)
 
 
-class RosPubHandler:
-    def __init__(self,
-                 message_broker: MessageBroker = None):
 
+class RosServiceHandler:
+    def __init__(self, message_broker: MessageBroker = None):
         self.message_broker = message_broker
         self.logger = logging.getLogger(__name__)
 
     async def start(self):
+        self.logger.info("Starting ROS Service Handler")
+        await self.message_broker.subscribe("Backend/mission_command", self.handle_mission_command)
+        await self.message_broker.subscribe("Backend/mission_state_request", self.handle_mission_state_request)
+        await self.message_broker.subscribe("Backend/file_update", self.handle_file_update)
+
+    async def handle_mission_command(self, topic, message):
+        try:
+            command_value = message["command"].value
+            self.logger.info(f"Sending mission command: {command_value}")
+            
+            rospy.wait_for_service('mission_command', timeout=1.0)
+            send_command = ServiceProxy('mission_command', mission_commands)  # Use imported service type
+            send_command(command=command_value)
+            
+        except Exception as e:
+            self.logger.error(f"Error sending mission command: {str(e)}")
+
+    async def handle_mission_state_request(self, topic, message):
+        self.logger.info("Handling current state request")
+        
+        try:
+            rospy.wait_for_service('mission_state_request', timeout=1.0)
+            
+            try:
+                get_state = ServiceProxy('mission_state_request', mission_states)  # Use imported service type
+                response = get_state()
+                
+                # Convert the raw state number to enum member
+                state_enum = MissionStates(response.current_state)
+                self.logger.debug(f"State converted to enum: {state_enum}")
+                
+                await self.message_broker.publish(
+                    "RosServiceHandler/current_state", 
+                    {"state": state_enum.name, "state_name": response.state_name}  # Include state_name from response
+                )
+                
+            except ValueError as e:
+                self.logger.error(f"Received unknown state value: {response.current_state}")
+                
+        except rospy.ROSException as e:
+            self.logger.error(f"Service not available: {e}")
+
+    async def handle_file_update(self, topic, message):
         pass
 
     async def stop(self):
-        pass
+        self.message_broker.stop()
 
 
 class RosSubHandler:
@@ -81,6 +125,7 @@ class RosSubHandler:
         # Initialize ROS node
         try:
             rospy.init_node('camera_subscriber', anonymous=True)
+
         except rospy.ROSException:
             self.logger.info("ROS node already initialized")
         
@@ -181,6 +226,7 @@ class RosSubHandler:
             self.axis_sub.unregister()
         self.logger.info("Unregistered all subscribers")
 
+
 class RosConnectionMonitor:
     def __init__(self, 
                  message_broker: MessageBroker = None):
@@ -246,7 +292,7 @@ async def main(enable_logging):
         ros_connection_monitor_message_broker = MessageBroker(1024)
 
         # Make handlers
-        ros_pub_handler = RosPubHandler(ros_pub_message_broker)
+        ros_pub_handler = RosServiceHandler(ros_pub_message_broker)
         ros_sub_handler = RosSubHandler(message_broker=ros_sub_message_broker,
                                         image_quality=50)
         ros_connection_monitor = RosConnectionMonitor(ros_connection_monitor_message_broker)
