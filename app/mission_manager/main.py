@@ -22,6 +22,14 @@ from message_broker import MessageBroker
 from enum_definitions import ProcessingModes, ProcessingModeActions, MissionStates
 
 def setup_logging(enable_logging):
+    # Import for thread safety
+    import threading
+    import sys
+    
+    # Force immediate flushing of stdout/stderr
+    sys.stdout.reconfigure(line_buffering=True)
+    sys.stderr.reconfigure(line_buffering=True)
+    
     # Set base log level
     base_level = logging.DEBUG if enable_logging else logging.INFO
     
@@ -32,13 +40,23 @@ def setup_logging(enable_logging):
     # Clear any existing handlers
     root_logger.handlers.clear()
     
-    # Create formatters with more detailed information
-    formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - [%(funcName)s:%(lineno)d] - %(message)s'
+    # Create thread-safe formatter
+    class ThreadFormatter(logging.Formatter):
+        def format(self, record):
+            record.thread_name = threading.current_thread().name
+            return super().format(record)
+    
+    formatter = ThreadFormatter(
+        '%(asctime)s - %(name)s - %(levelname)s - [%(funcName)s:%(lineno)d] - (%(thread_name)s) - %(message)s'
     )
     
-    # Create and configure stream handler
-    stream_handler = logging.StreamHandler()
+    # Create and configure stream handler with immediate flush
+    class ImmediateStreamHandler(logging.StreamHandler):
+        def emit(self, record):
+            super().emit(record)
+            self.flush()
+    
+    stream_handler = ImmediateStreamHandler(sys.stdout)
     stream_handler.setFormatter(formatter)
     stream_handler.setLevel(base_level)
     root_logger.addHandler(stream_handler)
@@ -52,13 +70,10 @@ def setup_logging(enable_logging):
         
         file_handler = logging.FileHandler(log_file)
         file_handler.setFormatter(formatter)
-        file_handler.setLevel(logging.DEBUG)  # Always set file handler to DEBUG when enabled
+        file_handler.setLevel(logging.DEBUG)
         root_logger.addHandler(file_handler)
 
-    # Prevent ROS double logging but keep our logs
-    logging.getLogger('rosout').propagate = False
-    
-    # Configure specific loggers
+    # Configure specific loggers to ensure thread safety
     loggers_to_configure = [
         'RosServiceHandler',
         'RosSubHandler', 
@@ -68,9 +83,13 @@ def setup_logging(enable_logging):
     for logger_name in loggers_to_configure:
         logger = logging.getLogger(logger_name)
         logger.setLevel(base_level)
-        # Ensure propagation to root logger
-        logger.propagate = True
-        
+        # Force thread safety
+        logger.handlers = []  # Clear any existing handlers
+        # Add our thread-safe handlers
+        logger.addHandler(stream_handler)
+        if enable_logging:
+            logger.addHandler(file_handler)
+    
     # Create a logger for the main module
     main_logger = logging.getLogger(__name__)
     main_logger.setLevel(base_level)
@@ -91,8 +110,10 @@ class RosServiceHandler:
         try:
             # Subscribe to messages that will trigger service calls
             self.logger.debug("Setting up subscriptions...")
+            
             await self.message_broker.subscribe("Backend/mission_command", self.handle_mission_command)
             await self.message_broker.subscribe("Backend/mission_state_request", self.handle_mission_state_request)
+
             self.logger.debug("Subscriptions established")
         except Exception as e:
             self.logger.error(f"Failed to set up message subscriptions: {str(e)}", exc_info=True)
@@ -167,7 +188,6 @@ class RosSubHandler:
         self._node_name = f'camera_subscriber_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
 
     async def start(self):
-        self.logger.info("Starting ROS Sub Handler")
         # Store reference to the event loop
         self.loop = asyncio.get_running_loop()
         self._shutdown_requested = False
@@ -217,13 +237,13 @@ class RosSubHandler:
         self.logger.info("Subscribed to axis topic")
 
         self.mission_state_updates_sub = rospy.Subscriber("/mission_state_updates", UInt8, self.handle_mission_state_updates)
+        self.logger.info("Subscribed to mission state updates topic")
 
         # Start monitoring task
         asyncio.create_task(self._monitor_connections())
 
     def handle_front_realsense_frame(self, msg):
         try:
-            self.logger.debug("Handling front realsense frame")
             compressed_jpeg = self.convert_ros_image_to_compressed_jpeg(msg)
             if compressed_jpeg:
                 message = {"frame": compressed_jpeg}
@@ -233,13 +253,11 @@ class RosSubHandler:
                 )
                 future.result()
 
-            self.logger.info("Front realsense frame handled")
         except Exception as e:
             self.logger.error(f"Error in front realsense handler: {str(e)}")
 
     def handle_rear_realsense_frame(self, msg):
         try:
-            self.logger.debug("Handling rear realsense frame")
             compressed_jpeg = self.convert_ros_image_to_compressed_jpeg(msg)
             if compressed_jpeg:
                 message = {"frame": compressed_jpeg}
@@ -253,7 +271,6 @@ class RosSubHandler:
 
     def handle_axis_frame(self, msg):
         try:
-            self.logger.debug("Handling axis frame")
             compressed_jpeg = self.convert_ros_image_to_compressed_jpeg(msg)
             if compressed_jpeg:
                 message = {"frame": compressed_jpeg}
@@ -292,7 +309,6 @@ class RosSubHandler:
                 self.logger.error("Failed to encode image to JPEG")
                 return None
 
-            self.logger.debug("Successfully converted ROS image to compressed JPEG")
             return encoded_out.tobytes()
 
         except Exception as e:
@@ -355,7 +371,6 @@ class RosConnectionMonitor:
             try:
                 # Get list of topics
                 topics = rospy.get_published_topics()
-                self.logger.debug(f"Available topics: {topics}")
                 
                 # Check if diagnostic topic exists
                 diagnostic_exists = any(topic[0] == '/diagnostics' for topic in topics)
@@ -375,13 +390,13 @@ class RosConnectionMonitor:
                         "RosConnectionMonitor/connection_status_update",
                         {"connected": False}
                     )
-                    self.logger.warning("Robot disconnected")
+                    self.logger.debug("Robot disconnected")
                     
             except Exception as e:
 
                 self.logger.warning(f"Error checking robot connection: {str(e)}")
                 
-            await asyncio.sleep(10)
+            await asyncio.sleep(5)
 
     async def stop(self):
         self.message_broker.stop()
@@ -424,7 +439,6 @@ async def main(enable_logging):
         while True:
             try:
                 await asyncio.sleep(1)
-                logger.debug("Main loop tick")
             except Exception as e:
                 logger.error(f"Error in main loop: {str(e)}", exc_info=True)
                 raise

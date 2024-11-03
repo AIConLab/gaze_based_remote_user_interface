@@ -18,41 +18,80 @@ from logging.handlers import RotatingFileHandler
 
 
 def setup_logging(enable_logging):
-    # Set up root logger
+    """Configure logging with explicit handler removal and stream sync"""
+    # Force flush on all handlers
+    import sys
+    sys.stdout.reconfigure(line_buffering=True)
+    sys.stderr.reconfigure(line_buffering=True)
+    
+    # Set base log level
+    base_level = logging.DEBUG if enable_logging else logging.INFO
+    
+    # Configure root logger first
     root_logger = logging.getLogger()
-    root_logger.setLevel(logging.DEBUG if enable_logging else logging.INFO)
+    root_logger.setLevel(base_level)
+    
+    # Clear any existing handlers from all loggers
+    loggers = [logging.getLogger(name) for name in logging.root.manager.loggerDict]
+    for logger in loggers + [root_logger]:
+        logger.handlers.clear()
+    
+    # Create formatters with more detailed information
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - [%(funcName)s:%(lineno)d] - %(message)s'
+    )
+    
+    # Create and configure stream handler with explicit buffering
+    stream_handler = logging.StreamHandler(sys.stdout)
+    stream_handler.setFormatter(formatter)
+    stream_handler.setLevel(base_level)
+    stream_handler.set_name('console_handler')  # Named handler for identification
+    root_logger.addHandler(stream_handler)
 
-    # Remove any existing handlers
-    for handler in root_logger.handlers[:]:
-        root_logger.removeHandler(handler)
-
-    # Create a StreamHandler for console output
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.DEBUG if enable_logging else logging.INFO)
-
-    # Create a formatter and set it for the console handler
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    console_handler.setFormatter(formatter)
-
-    # Add the console handler to the root logger
-    root_logger.addHandler(console_handler)
-
+    # Add file handler if logging is enabled
     if enable_logging:
-        # Set up file logging if enabled
         log_dir = "logs"
         os.makedirs(log_dir, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         log_file = os.path.join(log_dir, f"app_log_{timestamp}.log")
-
-        # Create a RotatingFileHandler
-        file_handler = RotatingFileHandler(log_file, maxBytes=10*1024*1024, backupCount=5)
-        file_handler.setLevel(logging.DEBUG)
+        
+        file_handler = logging.FileHandler(log_file, mode='a')
         file_handler.setFormatter(formatter)
-
-        # Add the file handler to the root logger
+        file_handler.setLevel(logging.DEBUG)
+        file_handler.set_name('file_handler')  # Named handler for identification
         root_logger.addHandler(file_handler)
 
-    return root_logger
+    # Prevent ROS double logging but keep our logs
+    ros_logger = logging.getLogger('rosout')
+    ros_logger.propagate = False
+    ros_logger.addHandler(stream_handler)  # Ensure ROS logs still go to console
+    
+    # Configure specific loggers with explicit handlers
+    loggers_to_configure = [
+        'RosServiceHandler',
+        'RosSubHandler', 
+        'RosConnectionMonitor',
+        'MessageBroker'  # Add message broker logging
+    ]
+    
+    # Ensure each logger has the right configuration
+    for logger_name in loggers_to_configure:
+        logger = logging.getLogger(logger_name)
+        logger.setLevel(base_level)
+        logger.propagate = True  # Ensure propagation to root
+        # Clear and re-add handlers to ensure clean state
+        logger.handlers.clear()
+        
+    # Create a logger for the main module
+    main_logger = logging.getLogger(__name__)
+    main_logger.setLevel(base_level)
+    
+    # Log initial configuration to verify
+    main_logger.debug("Logging configuration completed")
+    main_logger.debug(f"Root logger level: {logging.getLevelName(root_logger.getEffectiveLevel())}")
+    main_logger.debug(f"Handler count: {len(root_logger.handlers)}")
+    
+    return main_logger
 
 
 class Backend:
@@ -195,7 +234,7 @@ class Backend:
             await self.message_broker.publish("Backend/robot_connection_status", {"connected": self.robot_connected_state})
 
     async def handle_mission_state_update(self, topic, message):
-        self.logger.debug(f"Received mission state update: {message}")
+        self.logger.info(f"Received mission state update: {message}")
         self.mission_state = message['state']
 
         await self.message_broker.publish("Backend/mission_state_update", {"mission_state": self.mission_state})
