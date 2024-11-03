@@ -74,8 +74,10 @@ class Backend:
         await self.message_broker.subscribe("Frontend/gaze_enabled_button_pressed", self.handle_gaze_enabled_button_pressed)
         await self.message_broker.subscribe("Frontend/mission_start_button_pressed", self.handle_mission_start_button_pressed)
         await self.message_broker.subscribe("Frontend/mission_pause_button_pressed", self.handle_mission_pause_button_pressed)
-        await self.message_broker.subscribe("Frontend/mission_stop_button_pressed", self.handle_mission_stop_button_pressed)
+        await self.message_broker.subscribe("Frontend/mission_abort_button_pressed", self.handle_mission_abort_button_pressed)
         await self.message_broker.subscribe("Frontend/video_topic_selected", self.handle_video_topic_selected)
+        await self.message_broker.subscribe("Frontend/mission_resume_button_pressed", self.handle_mission_resume_button_pressed)
+
         await self.message_broker.subscribe("Frontend/process_action_button_pressed", self.handle_processing_mode_action)
 
         """
@@ -134,13 +136,22 @@ class Backend:
     async def handle_mission_start_button_pressed(self, topic, message):
         self.logger.debug("Mission start button pressed")
 
+        await self.message_broker.publish("Backend/mission_command", {"command": MissionCommandSignals.MISSION_START.value})
 
     async def handle_mission_pause_button_pressed(self, topic, message):
         self.logger.debug("Mission pause button pressed")
 
-    async def handle_mission_stop_button_pressed(self, topic, message):
-        self.logger.debug("Mission stop button pressed")
+        await self.message_broker.publish("Backend/mission_command", {"command": MissionCommandSignals.MISSION_PAUSE.value})
 
+    async def handle_mission_abort_button_pressed(self, topic, message):
+        self.logger.debug("Mission abort button pressed")
+
+        await self.message_broker.publish("Backend/mission_command", {"command": MissionCommandSignals.MISSION_ABORT.value})
+
+    async def handle_mission_resume_button_pressed(self, topic, message):
+        self.logger.debug("Mission resume button pressed")
+
+        await self.message_broker.publish("Backend/mission_command", {"command": MissionCommandSignals.MISSION_RESUME.value})
 
     async def handle_video_topic_selected(self, topic, message):
         self.logger.debug(f"Received video topic selected: {message}")
@@ -184,7 +195,7 @@ class Backend:
             await self.message_broker.publish("Backend/robot_connection_status", {"connected": self.robot_connected_state})
 
     async def handle_mission_state_update(self, topic, message):
-        self.logger.info(f"Received mission state update: {message}")
+        self.logger.debug(f"Received mission state update: {message}")
         self.mission_state = message['state']
 
         await self.message_broker.publish("Backend/mission_state_update", {"mission_state": self.mission_state})
@@ -255,7 +266,6 @@ class Frontend:
         self.state['processing_mode'] = mode
         self.logger.debug(f"Frontend: Processing mode updated: {mode}")
 
-
     async def video_feed(self):
         async def generate():
             while True:
@@ -299,14 +309,17 @@ class Frontend:
             if "gaze_button_pressed" in form:
                 await self.publish_message("Frontend/gaze_enabled_button_pressed", {'type': 'gaze_enabled_button_pressed'})
 
+            elif "mission_resume_button_pressed" in form:
+                await self.publish_message("Frontend/mission_resume_button_pressed", {'type': 'mission_resume_button_pressed'})
+
             elif "mission_start_button_pressed" in form:
                 await self.publish_message("Frontend/mission_start_button_pressed", {'type': 'mission_start_button_pressed'})
 
             elif "mission_pause_button_pressed" in form:
                 await self.publish_message("Frontend/mission_pause_button_pressed", {'type': 'mission_pause_button_pressed'})
 
-            elif "mission_stop_button_pressed" in form:
-                await self.publish_message("Frontend/mission_stop_button_pressed", {'type': 'mission_stop_button_pressed'})
+            elif "mission_abort_button_pressed" in form:
+                await self.publish_message("Frontend/mission_abort_button_pressed", {'type': 'mission_abort_button_pressed'})
 
             elif "video_topic_selected" in form:
                 selected_topic = form.get("video_topic_selected")

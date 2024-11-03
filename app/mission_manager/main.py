@@ -82,57 +82,69 @@ class RosServiceHandler:
     def __init__(self, message_broker: MessageBroker = None):
         self.message_broker = message_broker
         self.logger = logging.getLogger(self.__class__.__name__)
+        # Store proxies to avoid recreating them for each call
+        self.mission_command_proxy = ServiceProxy('mission_command', mission_commands)
+        self.mission_state_proxy = ServiceProxy('mission_state_request', mission_states)
 
     async def start(self):
         self.logger.info("Starting ROS Service Handler")
-        # Subscribe to messages that will trigger service calls
-        await self.message_broker.subscribe("Backend/mission_command", self.handle_mission_command)
-        await self.message_broker.subscribe("Backend/mission_state_request", self.handle_mission_state_request)
+        try:
+            # Subscribe to messages that will trigger service calls
+            self.logger.debug("Setting up subscriptions...")
+            await self.message_broker.subscribe("Backend/mission_command", self.handle_mission_command)
+            await self.message_broker.subscribe("Backend/mission_state_request", self.handle_mission_state_request)
+            self.logger.debug("Subscriptions established")
+        except Exception as e:
+            self.logger.error(f"Failed to set up message subscriptions: {str(e)}", exc_info=True)
 
     async def handle_mission_command(self, topic, message):
         """Handle mission command messages by calling ROS service"""
+        self.logger.debug(f"Received mission command message - Topic: {topic}, Message: {message}")
+
         try:
-            command_value = message["command"].value
-            self.logger.debug(f"Calling mission_command service with command: {command_value}")
+            command_value = message["command"]
+            if hasattr(command_value, 'value'):
+                command_value = command_value.value
             
-            # Create service proxy and call service
-            mission_command = ServiceProxy('mission_command', mission_commands)
+            self.logger.debug(f"Calling mission_command service with command value: {command_value}")
             
             # Execute service call in executor to prevent blocking
             loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, lambda: mission_command(command=command_value))
+            response = await loop.run_in_executor(
+                None, 
+                lambda: self.mission_command_proxy(command=int(command_value))
+            )
             
-            self.logger.debug("Mission command service call completed")
+            self.logger.debug(f"Mission command service response: {response}")
             
         except Exception as e:
-            self.logger.error(f"Error calling mission_command service: {str(e)}")
+            self.logger.error(f"Error calling mission_command service: {str(e)}", exc_info=True)
 
     async def handle_mission_state_request(self, topic, message):
         """Handle mission state request by calling ROS service"""
+        self.logger.debug(f"Received state request on topic: {topic}")
+        
         try:
-            self.logger.debug("Calling mission_state_request service")
-            
-            # Create service proxy and call service
-            get_state = ServiceProxy('mission_state_request', mission_states)
-            
             # Execute service call in executor to prevent blocking
             loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(None, get_state)
+            response = await loop.run_in_executor(None, self.mission_state_proxy)
+            
+            self.logger.debug(f"Raw state response: {response}")
             
             # Convert response to enum and publish
             state_enum = MissionStates(response.current_state)
-            self.logger.debug(f"Received mission state: {state_enum}")
             
             await self.message_broker.publish(
                 "RosServiceHandler/current_state", 
                 {"state": state_enum.name}
             )
             
+            self.logger.debug(f"Published state: {state_enum.name}")
+            
         except Exception as e:
-            self.logger.error(f"Error calling mission_state_request service: {str(e)}")
+            self.logger.error(f"Error calling mission_state_request service: {str(e)}", exc_info=True)
 
     async def stop(self):
-        self.logger.info("Stopping ROS Service Handler")
         self.message_broker.stop()
 
 
