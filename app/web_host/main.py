@@ -98,6 +98,7 @@ class Backend:
         # MissionManager subscriptions
         await self.message_broker.subscribe("RosConnectionMonitor/connection_status_update", self.handle_robot_connection_status_update)
         await self.message_broker.subscribe("RosServiceHandler/current_state", self.handle_mission_state_update)
+        await self.message_broker.subscribe("RosSubHandler/mission_state_update", self.handle_mission_state_update)
 
         # Initial publisher
         # Loop until processing mode is set, this is in case Backend initializes before ModuleProcessor
@@ -113,7 +114,7 @@ class Backend:
             await self.message_broker.publish("Backend/processing_mode_action", {"action": ProcessingModeActions.CANCEL.name})
 
             # Add delay to prevent flooding message
-            await asyncio.sleep(1)
+            await asyncio.sleep(3)
 
     async def request_mission_state(self):
         self.logger.debug("Requesting mission state")
@@ -122,7 +123,7 @@ class Backend:
 
             await self.message_broker.publish("Backend/mission_state_request", {})
 
-            await asyncio.sleep(1)
+            await asyncio.sleep(3)
 
     async def handle_gaze_enabled_button_pressed(self, topic, message):
         self.logger.debug("Gaze enabled button pressed")
@@ -419,7 +420,6 @@ async def main(enable_logging):
     await web_host.start()
 
     try:
-        # Replace the run_task call with this
         config = hypercorn.Config()
         config.bind = [f"{web_host.ip}:{web_host.port}"]
         config.access_log_format = ""  # Disable access logs

@@ -76,7 +76,7 @@ catkin_package(CATKIN_DEPENDS message_runtime)' > CMakeLists.txt
 WORKDIR /root/catkin_ws
 RUN /bin/bash -c "source /opt/ros/noetic/setup.bash && catkin_make"
 
-# Rest of your Dockerfile
+
 WORKDIR /root
 COPY .docker/pip_requirements/ros_noetic_remote_master.txt /root/req.txt
 RUN pip3 install -r /root/req.txt
