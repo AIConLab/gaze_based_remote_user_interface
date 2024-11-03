@@ -12,6 +12,8 @@ from datetime import datetime
 from message_broker import MessageBroker
 from utilities import AprilTagRenderer
 from enum_definitions import ProcessingModes, ProcessingModeActions
+from ocr_module import OCRModule  # Import the OCR module here
+
 
 
 def setup_logging(enable_logging):
@@ -535,6 +537,9 @@ class ModuleController:
 
         # Video render subs
         await self.message_broker.subscribe("VideoRenderer/fixation_target", self.handle_fixation_target)
+        
+        # OCR results subscription
+         await self.message_broker.subscribe("OCRModule/ocr_results", self.handle_ocr_results)
 
 
     async def handle_selected_video_topic_update(self, topic, message):
@@ -755,6 +760,7 @@ async def main(enable_logging):
                                 output_height=720)
 
         module_controller = ModuleController(message_broker=module_controller_message_broker)
+        ocr_module = OCRModule(message_broker=message_broker)  # Instantiate the OCRModule
 
         module_datapath = ModuleDatapath(message_broker=module_datapath_message_broker)
 
@@ -767,6 +773,7 @@ async def main(enable_logging):
             ui_renderer.start(),
             video_renderer.start(),
             module_controller.start(),
+            ocr_module.start(),
             module_datapath.start(),
             webcam_module.start()
         )

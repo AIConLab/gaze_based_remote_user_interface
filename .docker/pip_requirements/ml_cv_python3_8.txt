@@ -32,3 +32,9 @@ webencodings==0.5.1
     # via
     #   cssselect2
     #   tinycss2
+pytesseract==0.3.13
+# Install pytesseract and tesseract dependencies
+RUN apt-get update && \
+    apt-get install -y tesseract-ocr libtesseract-dev && \
+    pip install pytesseract
+
