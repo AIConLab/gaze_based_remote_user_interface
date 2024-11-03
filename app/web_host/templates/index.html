@@ -12,12 +12,16 @@
             <div class="section">
                 <h2>Robot connection status</h2>
                 <p>Status: <span id="connection-status">{% if robot_connected %}Connected{% else %}Disconnected{% endif %}</span></p>
+
+                <h2>Current Mission State</h2>
+                <p>State: <span id="mission-state">{{ mission_state }}</span></p>
             </div>
             <div class="section">
                 <h2>Mission Control</h2>
                 <button id="mission-start">Mission Start</button>
                 <button id="mission-pause">Mission Pause</button>
-                <button id="mission-stop">Mission Stop</button>
+                <button id="mission-resume">Mission Resume</button>
+                <button id="mission-abort">Mission Stop</button>
             </div>
             <div class="section">
                 <h2>Mission files</h2>

@@ -21,8 +21,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // Mission buttons
     const missionStart = document.getElementById('mission-start');
     const missionPause = document.getElementById('mission-pause');
-    const missionStop = document.getElementById('mission-stop');
-    
+    const missionResume = document.getElementById('mission-resume');
+    const missionAbort = document.getElementById('mission-abort');
+
 
     // Setup video feed
     function setupVideoFeed() {
@@ -97,7 +98,17 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    missionStop.addEventListener('click', function() {
+    missionResume.addEventListener('click', function() {
+        fetch('/button_press', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: 'mission_resume_button_pressed=true'
+        });
+    });
+
+    missionAbort.addEventListener('click', function() {
         fetch('/button_press', {
             method: 'POST',
             headers: {

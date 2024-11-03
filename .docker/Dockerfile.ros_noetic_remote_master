@@ -41,16 +41,52 @@ ENV ROS_DISTRO noetic
 ENV LIBGL_ALWAYS_SOFTWARE 1
 ENV DISPLAY=:0
 
-WORKDIR /root
-COPY ./pip_requirements/ros_noetic_remote_master.txt /root/req.txt
+# Create catkin workspace and copy services
+RUN mkdir -p /root/catkin_ws/src/ugv_mission_pkg/srv
+WORKDIR /root/catkin_ws/src/ugv_mission_pkg
 
+# Copy service files
+COPY ../app/mission_manager/srv ./srv/
+
+# Create package.xml
+RUN echo '<?xml version="1.0"?>\n\
+<package format="2">\n\
+  <name>ugv_mission_pkg</name>\n\
+  <version>0.0.0</version>\n\
+  <description>Mission package</description>\n\
+  <maintainer email="temp@temp.com">temp</maintainer>\n\
+  <license>BSD</license>\n\
+  <buildtool_depend>catkin</buildtool_depend>\n\
+  <build_depend>message_generation</build_depend>\n\
+  <exec_depend>message_runtime</exec_depend>\n\
+</package>' > package.xml
+
+# Create CMakeLists.txt
+RUN echo 'cmake_minimum_required(VERSION 3.0.2)\n\
+project(ugv_mission_pkg)\n\
+find_package(catkin REQUIRED COMPONENTS message_generation)\n\
+add_service_files(FILES\n\
+  mission_commands.srv\n\
+  mission_states.srv\n\
+)\n\
+generate_messages()\n\
+catkin_package(CATKIN_DEPENDS message_runtime)' > CMakeLists.txt
+
+# Build the workspace
+WORKDIR /root/catkin_ws
+RUN /bin/bash -c "source /opt/ros/noetic/setup.bash && catkin_make"
+
+
+WORKDIR /root
+COPY .docker/pip_requirements/ros_noetic_remote_master.txt /root/req.txt
 RUN pip3 install -r /root/req.txt
 
-# Create a script to update /etc/hosts
+# Create a script to update /etc/hosts and source ROS workspace
 RUN echo '#!/bin/bash\n\
 if [ ! -z "$ROBOT_IP" ]; then\n\
   echo "$ROBOT_IP $ROBOT_HOSTNAME" >> /etc/hosts\n\
 fi\n\
+source /root/catkin_ws/devel/setup.bash\n\
 exec "$@"' > /update-hosts.sh && chmod +x /update-hosts.sh
 
 # Set the script as the entry point

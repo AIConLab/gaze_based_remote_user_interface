@@ -90,8 +90,8 @@ services:
 
   mission_manager:
     build:
-      context: .
-      dockerfile: Dockerfile.ros_noetic_remote_master
+      context: ..
+      dockerfile: .docker/Dockerfile.ros_noetic_remote_master
     volumes:
       - ../app/mission_manager:/app
       - ../app/app_shared_data:/app_shared_data
