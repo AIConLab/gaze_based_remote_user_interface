@@ -22,110 +22,117 @@ from message_broker import MessageBroker
 from enum_definitions import ProcessingModes, ProcessingModeActions, MissionStates
 
 def setup_logging(enable_logging):
-    if enable_logging:
-        log_level = logging.DEBUG
-    else:
-        log_level = logging.INFO
-
-    logging.basicConfig(
-        level=log_level,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.StreamHandler()
-        ]
+    # Set base log level
+    base_level = logging.DEBUG if enable_logging else logging.INFO
+    
+    # Configure root logger first
+    root_logger = logging.getLogger()
+    root_logger.setLevel(base_level)
+    
+    # Clear any existing handlers
+    root_logger.handlers.clear()
+    
+    # Create formatters with more detailed information
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - [%(funcName)s:%(lineno)d] - %(message)s'
     )
+    
+    # Create and configure stream handler
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(formatter)
+    stream_handler.setLevel(base_level)
+    root_logger.addHandler(stream_handler)
 
+    # Add file handler if logging is enabled
     if enable_logging:
         log_dir = "logs"
         os.makedirs(log_dir, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         log_file = os.path.join(log_dir, f"app_log_{timestamp}.log")
+        
         file_handler = logging.FileHandler(log_file)
-        file_handler.setLevel(logging.DEBUG)
-        file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-        logging.getLogger().addHandler(file_handler)
+        file_handler.setFormatter(formatter)
+        file_handler.setLevel(logging.DEBUG)  # Always set file handler to DEBUG when enabled
+        root_logger.addHandler(file_handler)
 
-    # Set the level for specific loggers
-    for logger_name in ['RosServiceHandler', 'RosSubHandler', 'RosConnectionMonitor']:
-        logging.getLogger(logger_name).setLevel(log_level)
-
+    # Prevent ROS double logging but keep our logs
+    logging.getLogger('rosout').propagate = False
+    
+    # Configure specific loggers
+    loggers_to_configure = [
+        'RosServiceHandler',
+        'RosSubHandler', 
+        'RosConnectionMonitor'
+    ]
+    
+    for logger_name in loggers_to_configure:
+        logger = logging.getLogger(logger_name)
+        logger.setLevel(base_level)
+        # Ensure propagation to root logger
+        logger.propagate = True
+        
+    # Create a logger for the main module
+    main_logger = logging.getLogger(__name__)
+    main_logger.setLevel(base_level)
+    
+    return main_logger
 
 
 class RosServiceHandler:
     def __init__(self, message_broker: MessageBroker = None):
         self.message_broker = message_broker
-        self.logger = logging.getLogger(__name__)
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     async def start(self):
         self.logger.info("Starting ROS Service Handler")
-
+        # Subscribe to messages that will trigger service calls
         await self.message_broker.subscribe("Backend/mission_command", self.handle_mission_command)
         await self.message_broker.subscribe("Backend/mission_state_request", self.handle_mission_state_request)
-        await self.message_broker.subscribe("Backend/file_update", self.handle_file_update)
-
-    
-    async def wait_for_service(self, service_name, timeout=1.0):
-        """Non-blocking service check"""
-        try:
-            # Use asyncio.get_event_loop().run_in_executor for potentially blocking calls
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(
-                None, 
-                lambda: rospy.wait_for_service(service_name, timeout=timeout)
-            )
-            return True
-        except rospy.ROSException:
-            return False
-
 
     async def handle_mission_command(self, topic, message):
+        """Handle mission command messages by calling ROS service"""
         try:
             command_value = message["command"].value
-            self.logger.info(f"Sending mission command: {command_value}")
+            self.logger.debug(f"Calling mission_command service with command: {command_value}")
             
-            rospy.wait_for_service('mission_command', timeout=1.0)
-            send_command = ServiceProxy('mission_command', mission_commands)  # Use imported service type
-            send_command(command=command_value)
+            # Create service proxy and call service
+            mission_command = ServiceProxy('mission_command', mission_commands)
+            
+            # Execute service call in executor to prevent blocking
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, lambda: mission_command(command=command_value))
+            
+            self.logger.debug("Mission command service call completed")
             
         except Exception as e:
-            self.logger.error(f"Error sending mission command: {str(e)}")
+            self.logger.error(f"Error calling mission_command service: {str(e)}")
 
     async def handle_mission_state_request(self, topic, message):
-        self.logger.debug("Handling mission state request")
-        
+        """Handle mission state request by calling ROS service"""
         try:
-            # Non-blocking service check
-            service_available = await self.wait_for_service('mission_state_request', timeout=0.5)
+            self.logger.debug("Calling mission_state_request service")
             
-            if not service_available:
-                self.logger.debug("Mission state service not available")
-                return
-            
-            # Create service proxy and call in executor to prevent blocking
-            loop = asyncio.get_event_loop()
+            # Create service proxy and call service
             get_state = ServiceProxy('mission_state_request', mission_states)
             
-            try:
-                response = await loop.run_in_executor(None, get_state)
-                
-                # Convert the raw state number to enum member
-                state_enum = MissionStates(response.current_state)
-                self.logger.debug(f"State converted to enum: {state_enum}")
-                
-                await self.message_broker.publish(
-                    "RosServiceHandler/current_state", 
-                    {"state": state_enum.name, "state_name": response.state_name}
-                )
-                
-            except Exception as e:
-                self.logger.error(f"Error getting mission state: {e}")
-                
+            # Execute service call in executor to prevent blocking
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(None, get_state)
+            
+            # Convert response to enum and publish
+            state_enum = MissionStates(response.current_state)
+            self.logger.debug(f"Received mission state: {state_enum}")
+            
+            await self.message_broker.publish(
+                "RosServiceHandler/current_state", 
+                {"state": state_enum.name}
+            )
+            
         except Exception as e:
-            self.logger.error(f"Error in mission state request handler: {e}")
-    async def handle_file_update(self, topic, message):
-        pass
+            self.logger.error(f"Error calling mission_state_request service: {str(e)}")
 
     async def stop(self):
+        self.logger.info("Stopping ROS Service Handler")
         self.message_broker.stop()
 
 
@@ -135,16 +142,20 @@ class RosSubHandler:
                  message_broker: MessageBroker = None):
         
         self.image_quality = image_quality
+
         self.front_realsense_sub = None
         self.rear_realsense_sub = None
         self.axis_sub = None
+        self.mission_state_update_sub = None
+
         self.message_broker = message_broker
-        self.logger = logging.getLogger(__name__)
+        self.logger = logging.getLogger(self.__class__.__name__)
         self.loop = None
         self._shutdown_requested = False
         self._node_name = f'camera_subscriber_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
 
     async def start(self):
+        self.logger.info("Starting ROS Sub Handler")
         # Store reference to the event loop
         self.loop = asyncio.get_running_loop()
         self._shutdown_requested = False
@@ -193,6 +204,8 @@ class RosSubHandler:
         )
         self.logger.info("Subscribed to axis topic")
 
+        self.mission_state_updates_sub = rospy.Subscriber("/mission_state_updates", UInt8, self.handle_mission_state_updates)
+
         # Start monitoring task
         asyncio.create_task(self._monitor_connections())
 
@@ -239,6 +252,21 @@ class RosSubHandler:
                 future.result()
         except Exception as e:
             self.logger.error(f"Error in axis handler: {str(e)}")
+
+    def handle_mission_state_updates(self, msg):    
+        try:
+            self.logger.debug("Handling mission state updates")
+            state = MissionStates(msg.data)
+
+            message = {"state": state.name}
+            future = asyncio.run_coroutine_threadsafe(
+                self.message_broker.publish("RosSubHandler/mission_state_updates", message),
+                self.loop
+            )
+            future.result(timeout=1)
+
+        except Exception as e:
+            self.logger.error(f"Error in mission state updates handler: {str(e)}")
 
     def convert_ros_image_to_compressed_jpeg(self, msg):
         try:
@@ -294,8 +322,6 @@ class RosSubHandler:
         self.logger.info("ROS handler stopped")
 
 
-
-
 class RosConnectionMonitor:
     def __init__(self, 
                  message_broker: MessageBroker = None):
@@ -303,7 +329,8 @@ class RosConnectionMonitor:
         self.robot_connected = False
 
         self.message_broker = message_broker
-        self.logger = logging.getLogger(__name__)
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger.debug("Creating ROS Connection Monitor")
         
     async def start(self):
         self.logger.info("Starting ROS Connection Monitor")
@@ -342,18 +369,17 @@ class RosConnectionMonitor:
 
                 self.logger.warning(f"Error checking robot connection: {str(e)}")
                 
-            await asyncio.sleep(5)
+            await asyncio.sleep(10)
 
     async def stop(self):
-        self._shutdown_flag = True
+        self.message_broker.stop()
 
 
 
 async def main(enable_logging):
     try:
-        setup_logging(enable_logging)
-        logger = logging.getLogger(__name__)
-        logger.info("Starting main")
+        logger = setup_logging(enable_logging)
+
 
         # Make message brokers
         logger.debug("Creating message brokers...")

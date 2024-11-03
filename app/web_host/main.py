@@ -65,7 +65,7 @@ class Backend:
         self.robot_connected_state = False
         self.available_video_topics = []
 
-        self.logger = logging.getLogger(__name__)
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     async def start(self):
         self.logger.info("Backend started")
@@ -120,7 +120,6 @@ class Backend:
         self.logger.debug("Requesting mission state")
 
         while self.mission_state is None:
-
             await self.message_broker.publish("Backend/mission_state_request", {})
 
             await asyncio.sleep(3)
@@ -134,45 +133,14 @@ class Backend:
 
     async def handle_mission_start_button_pressed(self, topic, message):
         self.logger.debug("Mission start button pressed")
-        if not self.robot_connected_state or self.mission_state is None:
-            self.logger.warning(
-                "Attempted to stop mission without robot connection")
-            await self.message_broker.publish("Backend/error_banner", {"message": "Robot not connected or mission package not launched"})
-            return
 
-        if self.mission_state == MissionStates.IDLE:
-            # Publish mission start command
-            await self.message_broker.publish("MissionManager/mission_command", {"command": MissionCommandSignals.MISSION_START})
-
-        elif self.mission_state == MissionStates.PAUSED:
-            # Publish mission resume command
-            await self.message_broker.publish("MissionManager/mission_command", {"command": MissionCommandSignals.MISSION_RESUME})
 
     async def handle_mission_pause_button_pressed(self, topic, message):
         self.logger.debug("Mission pause button pressed")
-        if not self.robot_connected_state or self.mission_state is None:
-            self.logger.warning(
-                "Attempted to stop mission without robot connection")
-            await self.message_broker.publish("Backend/error_banner", {"message": "Robot not connected or mission package not launched"})
-            return
-
-        # Mission paused can be sent from any state except Aborted or Paused
-        if not self.mission_state == MissionStates.ABORTED and not self.mission_state == MissionStates.PAUSED:
-
-            # Publish mission pause command
-            await self.message_broker.publish("MissionManager/mission_command", {"command": MissionCommandSignals.MISSION_PAUSE})
 
     async def handle_mission_stop_button_pressed(self, topic, message):
         self.logger.debug("Mission stop button pressed")
-        if not self.robot_connected_state or self.mission_state is None:
-            self.logger.warning(
-                "Attempted to stop mission without robot connection")
 
-            await self.message_broker.publish("Backend/error_banner", {"message": "Robot not connected or mission package not launched"})
-
-            return
-
-        await self.message_broker.publish("MissionManager/mission_command", {"command": MissionCommandSignals.MISSION_ABORT})
 
     async def handle_video_topic_selected(self, topic, message):
         self.logger.debug(f"Received video topic selected: {message}")
@@ -216,6 +184,7 @@ class Backend:
             await self.message_broker.publish("Backend/robot_connection_status", {"connected": self.robot_connected_state})
 
     async def handle_mission_state_update(self, topic, message):
+        self.logger.info(f"Received mission state update: {message}")
         self.mission_state = message['state']
 
         await self.message_broker.publish("Backend/mission_state_update", {"mission_state": self.mission_state})
@@ -233,7 +202,7 @@ class Frontend:
         self.frame_lock = asyncio.Lock()
         self.frame_available = asyncio.Event()
         self.state = {}
-        self.logger = logging.getLogger(__name__)
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     async def start(self):
         self.logger.info("Frontend started")
@@ -376,7 +345,7 @@ class WebHost:
         self.frontend = Frontend(self.frontend_message_broker)
         
         # Create Quart app with logging disabled
-        self.app = Quart(__name__)
+        self.app = Quart(self.__class__.__name__)
         self.app.logger.setLevel(logging.WARNING)  # Set main app logger to WARNING
         
         # Disable all Quart loggers
@@ -389,7 +358,7 @@ class WebHost:
         self.app.config['LOGGER_NAME'] = None
         
         self.app = cors(self.app)
-        self.logger = logging.getLogger(__name__)
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     async def start(self):
         self.logger.info("Web host starting")

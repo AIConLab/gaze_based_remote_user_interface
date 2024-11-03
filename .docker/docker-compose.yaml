@@ -107,7 +107,7 @@ services:
     depends_on:
       - zmq_proxy
     working_dir: /app
-    command: "python3 main.py"
+    command: "python3 main.py --enable-logging"
     #command: ["bash", "-c", "chmod +x /app/debug.sh && /app/debug.sh"]
 
 
