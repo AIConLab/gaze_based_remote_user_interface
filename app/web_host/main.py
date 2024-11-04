@@ -116,6 +116,7 @@ class Backend:
         await self.message_broker.subscribe("Frontend/mission_abort_button_pressed", self.handle_mission_abort_button_pressed)
         await self.message_broker.subscribe("Frontend/video_topic_selected", self.handle_video_topic_selected)
         await self.message_broker.subscribe("Frontend/mission_resume_button_pressed", self.handle_mission_resume_button_pressed)
+        await self.message_broker.subscribe("Frontend/teleop_twist_button_pressed", self.handle_teleop_twist_button_pressed)
 
         await self.message_broker.subscribe("Frontend/process_action_button_pressed", self.handle_processing_mode_action)
 
@@ -200,6 +201,11 @@ class Backend:
             # Publish to ModuleController
             await self.message_broker.publish("Backend/selected_video_topic_update", {"topic": self.selected_video_topic})
 
+    async def handle_teleop_twist_button_pressed(self, topic, message):
+        self.logger.info(f"Received teleop twist button pressed: {message}")
+
+        await self.message_broker.publish("Backend/teleop_twist_command", {"command": message['command']})
+
     async def handle_latest_frame(self, topic, message):
         frame = message['frame']
 
@@ -234,6 +240,7 @@ class Backend:
             await self.message_broker.publish("Backend/robot_connection_status", {"connected": self.robot_connected_state})
 
     async def handle_mission_state_update(self, topic, message):
+        # Incoming message state is a string already
         self.logger.info(f"Received mission state update: {message}")
         self.mission_state = message['state']
 
@@ -371,6 +378,28 @@ class Frontend:
                     "Frontend/process_action_button_pressed", 
                     {'action': action_enum.name}
                 )
+
+            elif "teleop_toggle_pressed" in form:
+                # Dont need to do anything for now since this button just cause the teleop control to disapear from the front end ui
+                pass
+
+            elif "teleop_button_pressed" in form:
+                button_id = form.get("teleop_button_pressed")
+                # Map button IDs to movement commands [x, y, z, angular]
+                teleop_commands = {
+                    'teleop-forward': [1, 0, 0, 0],      # Forward
+                    'teleop-forward-right': [1, 0, 0, -1],  # Forward-Right
+                    'teleop-right': [0, 0, 0, -1],       # Right
+                    'teleop-back-right': [-1, 0, 0, -1], # Back-Right
+                    'teleop-back': [-1, 0, 0, 0],        # Back
+                    'teleop-back-left': [-1, 0, 0, 1],   # Back-Left
+                    'teleop-left': [0, 0, 0, 1],         # Left
+                    'teleop-forward-left': [1, 0, 0, 1], # Forward-Left
+                    'teleop-stop': [0, 0, 0, 0],         # Stop
+                }
+                
+                command = teleop_commands.get(button_id, [0, 0, 0, 0])  # Default to stop if unknown button
+                await self.publish_message("Frontend/teleop_twist_button_pressed", {'command': command})
 
             else:
                 self.logger.warning(f"Unknown POST request: {form}")

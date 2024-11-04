@@ -15,7 +15,19 @@ from rospy import ServiceProxy
 from diagnostic_msgs.msg import DiagnosticArray
 from sensor_msgs.msg import CompressedImage
 from std_msgs.msg import UInt8
-from ugv_mission_pkg.srv import mission_commands, mission_states  # Import the actua
+from ugv_mission_pkg.srv import mission_commands, mission_states 
+
+
+import termios
+import tty
+import threading
+import sys
+import rospy
+from geometry_msgs.msg import Twist, TwistStamped
+import logging
+from message_broker import MessageBroker
+from select import select
+
 
 
 from message_broker import MessageBroker
@@ -77,7 +89,8 @@ def setup_logging(enable_logging):
     loggers_to_configure = [
         'RosServiceHandler',
         'RosSubHandler', 
-        'RosConnectionMonitor'
+        'RosConnectionMonitor',
+        'TeleopTwistHandler'
     ]
     
     for logger_name in loggers_to_configure:
@@ -185,7 +198,7 @@ class RosSubHandler:
         self.logger = logging.getLogger(self.__class__.__name__)
         self.loop = None
         self._shutdown_requested = False
-        self._node_name = f'camera_subscriber_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
+        self._node_name = f'remote_subscriber_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
 
     async def start(self):
         # Store reference to the event loop
@@ -288,8 +301,10 @@ class RosSubHandler:
             state = MissionStates(msg.data)
 
             message = {"state": state.name}
+
+            # Notice the "s" is removed for publishing to the message broker
             future = asyncio.run_coroutine_threadsafe(
-                self.message_broker.publish("RosSubHandler/mission_state_updates", message),
+                self.message_broker.publish("RosSubHandler/mission_state_update", message),
                 self.loop
             )
             future.result(timeout=1)
@@ -402,6 +417,92 @@ class RosConnectionMonitor:
         self.message_broker.stop()
 
 
+class TeleopTwistHandler:
+    def __init__(self, message_broker: MessageBroker = None):
+        self.message_broker = message_broker
+        self.logger = logging.getLogger(self.__class__.__name__)
+        
+        # Constants for velocity scaling
+        self.speed = 0.5
+        
+        # Initialize the publisher as None - will be created in start()
+        self.twist_pub = None
+        self._node_name = f'teleop_twist_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
+
+    async def start(self):
+        self.logger.info("Starting Teleop Twist Handler")
+        
+        try:
+            # Initialize ROS node if needed
+            if not rospy.core.is_initialized():
+                rospy.init_node(self._node_name, anonymous=False)
+            
+            # Create the publisher for Twist messages
+            self.twist_pub = rospy.Publisher('/cmd_vel', Twist, queue_size=1)
+            
+            # Subscribe to teleop commands from the backend
+            await self.message_broker.subscribe("Backend/teleop_twist_command", self.handle_teleop_twist_command)
+            
+            self.logger.info("Teleop Twist Handler started successfully")
+            
+        except Exception as e:
+            self.logger.error(f"Error starting Teleop Twist Handler: {str(e)}")
+            raise
+
+    async def handle_teleop_twist_command(self, topic, message):
+        """
+        Handle incoming teleop commands and publish corresponding Twist messages.
+        Command format is [x, y, z, angular] where:
+        - x: forward/backward velocity
+        - y: left/right velocity (not used for differential drive)
+        - z: up/down velocity (not used for ground robots)
+        - angular: rotational velocity
+        """
+        self.logger.debug(f"Received teleop twist command - Topic: {topic}, Message: {message}")
+
+        try:
+            # Extract command array from message
+            command = message.get('command', [0, 0, 0, 0])
+            
+            # Create and populate Twist message
+            twist = Twist()
+            
+            # Linear velocities
+            twist.linear.x = command[0] * self.speed  # Forward/backward
+            twist.linear.y = 0.0  # Not used for differential drive
+            twist.linear.z = 0.0  # Not used for ground robot
+            
+            # Angular velocities
+            twist.angular.x = 0.0  # Not used
+            twist.angular.y = 0.0  # Not used
+            twist.angular.z = command[3] * self.speed  # Rotation
+            
+            # Publish the twist message
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, self.twist_pub.publish, twist)
+            
+            self.logger.debug(f"Published Twist message: linear.x={twist.linear.x}, angular.z={twist.angular.z}")
+
+        except Exception as e:
+            self.logger.error(f"Error handling teleop twist command: {str(e)}")
+
+    async def stop(self):
+        """Cleanup when stopping the handler"""
+        try:
+            if self.twist_pub:
+                # Publish zero velocity before shutting down
+                zero_twist = Twist()
+                self.twist_pub.publish(zero_twist)
+                # Unregister the publisher
+                self.twist_pub.unregister()
+                self.twist_pub = None
+                
+            self.logger.info("Teleop Twist Handler stopped")
+            
+        except Exception as e:
+            self.logger.error(f"Error stopping Teleop Twist Handler: {str(e)}")
+
+
 
 async def main(enable_logging):
     try:
@@ -413,6 +514,7 @@ async def main(enable_logging):
         ros_service_message_broker = MessageBroker(1024)
         ros_sub_message_broker = MessageBroker(1024 * 8)
         ros_connection_monitor_message_broker = MessageBroker(1024)
+        teleop_twist_message_broker = MessageBroker(1024)
         logger.debug("Message brokers created")
 
         # Make handlers
@@ -421,13 +523,15 @@ async def main(enable_logging):
         ros_sub_handler = RosSubHandler(message_broker=ros_sub_message_broker,
                                       image_quality=50)
         ros_connection_monitor = RosConnectionMonitor(message_broker=ros_connection_monitor_message_broker)
+        teleop_twist_handler = TeleopTwistHandler(message_broker=teleop_twist_message_broker)
         logger.debug("Handlers created")
 
         try:
             await asyncio.gather(
                 ros_service_handler.start(),
                 ros_sub_handler.start(),
-                ros_connection_monitor.start()
+                ros_connection_monitor.start(),
+                teleop_twist_handler.start()
             )
         except Exception as e:
             logger.error(f"Error in handler startup: {str(e)}", exc_info=True)
@@ -452,6 +556,7 @@ async def main(enable_logging):
         await ros_service_handler.stop()
         await ros_sub_handler.stop()
         await ros_connection_monitor.stop()
+        await teleop_twist_handler.stop()
         logger.info("Shutdown complete")
 
 

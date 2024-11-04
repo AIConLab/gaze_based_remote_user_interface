@@ -103,12 +103,19 @@ services:
       - ROBOT_IP=192.168.0.2
       - ROBOT_HOSTNAME=cpr-utsan06
       - ROS_MASTER_URI=http://192.168.0.2:11311
+      - PYTHONUNBUFFERED=1  # Add this to ensure Python output isn't buffered
     network_mode: "host"
     depends_on:
       - zmq_proxy
     working_dir: /app
-    command: "python3 main.py" # --enable-logging"
-    #command: ["bash", "-c", "chmod +x /app/debug.sh && /app/debug.sh"]
+    # These are the key settings for terminal access
+    tty: true
+    stdin_open: true
+    # Specify the device access more precisely
+    devices:
+      - /dev/:/dev/
+    # Use an alternate command to ensure proper shell initialization
+    command: "python3 main.py" #--enable-logging"
 
 
 networks:

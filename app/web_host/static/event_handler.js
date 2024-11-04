@@ -1,5 +1,39 @@
-
 document.addEventListener('DOMContentLoaded', function() {
+
+    const teleopControls = document.querySelector('.teleop-controls');
+    const teleopToggle = document.getElementById('teleop-toggle');
+    let teleopEnabled = false;
+
+    // Handle teleop toggle
+    teleopToggle.addEventListener('click', function() {
+        teleopEnabled = !teleopEnabled;
+        teleopToggle.textContent = teleopEnabled ? 'Disable Teleop' : 'Enable Teleop';
+        teleopControls.classList.toggle('hidden');
+        
+        fetch('/button_press', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: 'teleop_toggle_pressed=true'
+        });
+    });
+
+    // Handle teleop button presses
+    document.querySelectorAll('.teleop-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            if (!teleopEnabled) return;
+            fetch('/button_press', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `teleop_button_pressed=${encodeURIComponent(this.id)}`
+            });
+        });
+    });
+
+
     // Process Action Buttons
     const processActionButtons = {
         'segment-button': 'SEGMENT',
@@ -10,13 +44,13 @@ document.addEventListener('DOMContentLoaded', function() {
         'cycle-right-button': 'CYCLE_RIGHT'
     };
 
-
     // Video feed elements
     const videoTopicsSelect = document.getElementById('video-topics');
     const videoFeed = document.getElementById('video-feed');
 
     // Gaze button
     const gazeToggle = document.getElementById('gaze-toggle');
+    let gazeEnabled = false;
 
     // Mission buttons
     const missionStart = document.getElementById('mission-start');
@@ -24,6 +58,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const missionResume = document.getElementById('mission-resume');
     const missionAbort = document.getElementById('mission-abort');
 
+    // State elements
+    const connectionStatus = document.getElementById('connection-status');
+    const missionState = document.getElementById('mission-state');
 
     // Setup video feed
     function setupVideoFeed() {
@@ -65,9 +102,11 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    
     // Handle gaze toggle
     gazeToggle.addEventListener('click', function() {
+        gazeEnabled = !gazeEnabled;        
+        gazeToggle.textContent = gazeEnabled ? 'Disable Gaze' : 'Enable Gaze';
+        
         fetch('/button_press', {
             method: 'POST',
             headers: {
@@ -114,15 +153,29 @@ document.addEventListener('DOMContentLoaded', function() {
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
             },
-            body: 'mission_stop_button_pressed=true'
+            body: 'mission_abort_button_pressed=true'
         });
     });
+
+    // Function to update UI elements based on state
+    function updateUIFromState(state) {
+        if (connectionStatus) {
+            connectionStatus.textContent = state.robot_connected ? 'Connected' : 'Disconnected';
+        }
+        
+        if (missionState) {
+            missionState.textContent = state.mission_state || 'Unknown';
+        }
+    }
 
     // Add state polling function
     async function pollState() {
         try {
             const response = await fetch('/state');
             const state = await response.json();
+            
+            // Update UI elements
+            updateUIFromState(state);
             
             const interfaceBanner = document.querySelector('.interface-banner');
             const currentMode = interfaceBanner.dataset.mode;
@@ -187,20 +240,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // Poll every second
     setInterval(pollState, 1000);
 
+    // Initial state poll
+    pollState();
 
     // Add event listeners for all process action buttons
-    Object.keys(processActionButtons).forEach(buttonId => {
-        const button = document.getElementById(buttonId);
-        if (button) {
-            button.addEventListener('click', function() {
-                fetch('/button_press', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: `process_action_button_pressed=${processActionButtons[buttonId]}`
-                });
-            });
-        }
-    });
+    attachProcessActionButtonListeners();
 });
