@@ -15,7 +15,19 @@ from rospy import ServiceProxy
 from diagnostic_msgs.msg import DiagnosticArray
 from sensor_msgs.msg import CompressedImage
 from std_msgs.msg import UInt8
-from ugv_mission_pkg.srv import mission_commands, mission_states  # Import the actua
+from ugv_mission_pkg.srv import mission_commands, mission_states 
+
+
+import termios
+import tty
+import threading
+import sys
+import rospy
+from geometry_msgs.msg import Twist, TwistStamped
+import logging
+from message_broker import MessageBroker
+from select import select
+
 
 
 from message_broker import MessageBroker
@@ -77,7 +89,8 @@ def setup_logging(enable_logging):
     loggers_to_configure = [
         'RosServiceHandler',
         'RosSubHandler', 
-        'RosConnectionMonitor'
+        'RosConnectionMonitor',
+        'TeleopTwistHandler'
     ]
     
     for logger_name in loggers_to_configure:
@@ -404,6 +417,15 @@ class RosConnectionMonitor:
         self.message_broker.stop()
 
 
+class TeleopTwistHandler:
+    def __init__(self, message_broker: MessageBroker = None):
+        pass
+
+    async def start(self):
+        pass
+
+    async def stop(self):
+        pass
 
 async def main(enable_logging):
     try:
@@ -415,6 +437,7 @@ async def main(enable_logging):
         ros_service_message_broker = MessageBroker(1024)
         ros_sub_message_broker = MessageBroker(1024 * 8)
         ros_connection_monitor_message_broker = MessageBroker(1024)
+        teleop_twist_message_broker = MessageBroker(1024)
         logger.debug("Message brokers created")
 
         # Make handlers
@@ -423,13 +446,15 @@ async def main(enable_logging):
         ros_sub_handler = RosSubHandler(message_broker=ros_sub_message_broker,
                                       image_quality=50)
         ros_connection_monitor = RosConnectionMonitor(message_broker=ros_connection_monitor_message_broker)
+        teleop_twist_handler = TeleopTwistHandler(message_broker=teleop_twist_message_broker)
         logger.debug("Handlers created")
 
         try:
             await asyncio.gather(
                 ros_service_handler.start(),
                 ros_sub_handler.start(),
-                ros_connection_monitor.start()
+                ros_connection_monitor.start(),
+                teleop_twist_handler.start()
             )
         except Exception as e:
             logger.error(f"Error in handler startup: {str(e)}", exc_info=True)
@@ -454,6 +479,7 @@ async def main(enable_logging):
         await ros_service_handler.stop()
         await ros_sub_handler.stop()
         await ros_connection_monitor.stop()
+        await teleop_twist_handler.stop()
         logger.info("Shutdown complete")
 
 

@@ -1,4 +1,41 @@
 document.addEventListener('DOMContentLoaded', function() {
+
+    const teleopControls = document.querySelector('.teleop-controls');
+    const teleopToggle = document.getElementById('teleop-toggle');
+    let teleopEnabled = false;
+
+    // Handle teleop toggle
+    teleopToggle.addEventListener('click', function() {
+        teleopEnabled = !teleopEnabled;
+        teleopToggle.textContent = teleopEnabled ? 'Disable Teleop' : 'Enable Teleop';
+        teleopControls.classList.toggle('hidden');
+        
+        fetch('/button_press', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: 'teleop_toggle_pressed=true'
+        });
+    });
+
+    // Handle teleop button presses
+    document.querySelectorAll('.teleop-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            if (!teleopEnabled) return;
+            
+            const binding = this.dataset.binding;
+            fetch('/button_press', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `teleop_button_pressed=${encodeURIComponent(binding)}`
+            });
+        });
+    });
+
+
     // Process Action Buttons
     const processActionButtons = {
         'segment-button': 'SEGMENT',
@@ -15,6 +52,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Gaze button
     const gazeToggle = document.getElementById('gaze-toggle');
+    let gazeEnabled = false;
 
     // Mission buttons
     const missionStart = document.getElementById('mission-start');
@@ -68,6 +106,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Handle gaze toggle
     gazeToggle.addEventListener('click', function() {
+        gazeEnabled = !gazeEnabled;        
+        gazeToggle.textContent = gazeEnabled ? 'Disable Gaze' : 'Enable Gaze';
+        
         fetch('/button_press', {
             method: 'POST',
             headers: {

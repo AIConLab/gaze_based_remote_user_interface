@@ -6,6 +6,57 @@ body {
     height: 100vh;
 }
 
+
+/* Teleop Controls */
+.teleop-controls {
+    margin-bottom: 15px;
+}
+
+.teleop-controls.hidden {
+    display: none;
+}
+
+.teleop-pad {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2px;
+    width: 100%;
+    max-width: 200px;
+    margin: 0 auto;
+}
+
+.teleop-btn {
+    padding: 8px 0;
+    font-size: 14px;
+    background-color: #4a4a4a;
+    color: white;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    margin: 0;
+    width: 100%;
+    min-height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.teleop-btn:hover {
+    background-color: #5a5a5a;
+}
+
+.teleop-btn:active {
+    background-color: #3a3a3a;
+}
+
+#teleop-stop {
+    background-color: #cc0000;
+}
+
+#teleop-stop:hover {
+    background-color: #dd0000;
+}
+
 .container {
     display: flex;
     width: 100%;
