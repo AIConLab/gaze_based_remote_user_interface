@@ -23,14 +23,12 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('.teleop-btn').forEach(button => {
         button.addEventListener('click', function() {
             if (!teleopEnabled) return;
-            
-            const binding = this.dataset.binding;
             fetch('/button_press', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
                 },
-                body: `teleop_button_pressed=${encodeURIComponent(binding)}`
+                body: `teleop_button_pressed=${encodeURIComponent(this.id)}`
             });
         });
     });
