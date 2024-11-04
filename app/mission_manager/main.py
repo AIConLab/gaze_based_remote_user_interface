@@ -185,7 +185,7 @@ class RosSubHandler:
         self.logger = logging.getLogger(self.__class__.__name__)
         self.loop = None
         self._shutdown_requested = False
-        self._node_name = f'camera_subscriber_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
+        self._node_name = f'remote_subscriber_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
 
     async def start(self):
         # Store reference to the event loop
@@ -288,8 +288,10 @@ class RosSubHandler:
             state = MissionStates(msg.data)
 
             message = {"state": state.name}
+
+            # Notice the "s" is removed for publishing to the message broker
             future = asyncio.run_coroutine_threadsafe(
-                self.message_broker.publish("RosSubHandler/mission_state_updates", message),
+                self.message_broker.publish("RosSubHandler/mission_state_update", message),
                 self.loop
             )
             future.result(timeout=1)

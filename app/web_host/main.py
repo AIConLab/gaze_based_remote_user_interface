@@ -234,6 +234,7 @@ class Backend:
             await self.message_broker.publish("Backend/robot_connection_status", {"connected": self.robot_connected_state})
 
     async def handle_mission_state_update(self, topic, message):
+        # Incoming message state is a string already
         self.logger.info(f"Received mission state update: {message}")
         self.mission_state = message['state']
 
