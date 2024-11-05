@@ -7,14 +7,9 @@ RUN apt-get update && apt-get install -y \
     gnupg2 \
     lsb-release \
     bash-completion \
-    ros-${ROS_DISTRO}-rviz \
     ros-${ROS_DISTRO}-image-transport-plugins \
     ros-${ROS_DISTRO}-teleop-twist-keyboard \
     ros-${ROS_DISTRO}-husky-* \
-    ros-${ROS_DISTRO}-gazebo-ros-pkgs \
-    ros-${ROS_DISTRO}-moveit-* \
-    ros-${ROS_DISTRO}-industrial-* \
-    ros-${ROS_DISTRO}-ur-* \
     python3-wstool \
     python3-rosdep \
     python3-rosinstall \
@@ -41,12 +36,19 @@ ENV ROS_DISTRO noetic
 ENV LIBGL_ALWAYS_SOFTWARE 1
 ENV DISPLAY=:0
 
-# Create catkin workspace and copy services
-RUN mkdir -p /root/catkin_ws/src/ugv_mission_pkg/srv
+# Create catkin workspace and package directories
+RUN mkdir -p /root/catkin_ws/src/ugv_mission_pkg/srv && \
+    mkdir -p /root/catkin_ws/src/ugv_mission_pkg/msg
 WORKDIR /root/catkin_ws/src/ugv_mission_pkg
 
 # Copy service files
-COPY ../app/mission_manager/srv ./srv/
+COPY ../app/mission_manager/srv/* ./srv/
+
+# Copy the msg
+COPY ../app/mission_manager/msg/* ./msg/
+
+# Create message files
+WORKDIR /root/catkin_ws/src/ugv_mission_pkg
 
 # Create package.xml
 RUN echo '<?xml version="1.0"?>\n\
@@ -58,24 +60,47 @@ RUN echo '<?xml version="1.0"?>\n\
   <license>BSD</license>\n\
   <buildtool_depend>catkin</buildtool_depend>\n\
   <build_depend>message_generation</build_depend>\n\
+  <build_depend>std_msgs</build_depend>\n\
   <exec_depend>message_runtime</exec_depend>\n\
+  <exec_depend>std_msgs</exec_depend>\n\
 </package>' > package.xml
 
-# Create CMakeLists.txt
+# Create CMakeLists.txt with proper message handling
 RUN echo 'cmake_minimum_required(VERSION 3.0.2)\n\
 project(ugv_mission_pkg)\n\
-find_package(catkin REQUIRED COMPONENTS message_generation)\n\
-add_service_files(FILES\n\
+\n\
+find_package(catkin REQUIRED COMPONENTS\n\
+  message_generation\n\
+  std_msgs\n\
+)\n\
+\n\
+add_message_files(\n\
+  FILES\n\
+  GPS.msg\n\
+  MissionWaypoint.msg\n\
+)\n\
+\n\
+add_service_files(\n\
+  FILES\n\
   mission_commands.srv\n\
   mission_states.srv\n\
+  mission_file_transfer.srv\n\
 )\n\
-generate_messages()\n\
-catkin_package(CATKIN_DEPENDS message_runtime)' > CMakeLists.txt
+\n\
+generate_messages(\n\
+  DEPENDENCIES\n\
+  std_msgs\n\
+)\n\
+\n\
+catkin_package(\n\
+  CATKIN_DEPENDS\n\
+    message_runtime\n\
+    std_msgs\n\
+)' > CMakeLists.txt
 
 # Build the workspace
 WORKDIR /root/catkin_ws
 RUN /bin/bash -c "source /opt/ros/noetic/setup.bash && catkin_make"
-
 
 WORKDIR /root
 COPY .docker/pip_requirements/ros_noetic_remote_master.txt /root/req.txt

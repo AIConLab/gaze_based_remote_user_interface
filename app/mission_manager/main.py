@@ -12,10 +12,9 @@ from datetime import datetime
 
 import rospy
 from rospy import ServiceProxy
-from diagnostic_msgs.msg import DiagnosticArray
 from sensor_msgs.msg import CompressedImage
 from std_msgs.msg import UInt8
-from ugv_mission_pkg.srv import mission_commands, mission_states 
+from ugv_mission_pkg.srv import mission_commands, mission_states, mission_file_transfer
 
 
 import shutil
@@ -26,11 +25,10 @@ from dataclasses import dataclass
 from typing import List, Optional
 from pathlib import Path
 
-from geometry_msgs.msg import Twist, TwistStamped
-
+from geometry_msgs.msg import Twist
 
 from message_broker import MessageBroker
-from enum_definitions import MissionStates
+from enum_definitions import MissionStates, MissionCommandSignals
 
 def setup_logging(enable_logging):
     # Import for thread safety
@@ -126,6 +124,8 @@ class RosServiceHandler:
             
             await self.message_broker.subscribe("Backend/mission_command", self.handle_mission_command)
             await self.message_broker.subscribe("Backend/mission_state_request", self.handle_mission_state_request)
+            await self.message_broker.subscribe("MissionFileHandler/mission_files_ready", self.handle_mission_files_ready)
+
 
             self.logger.debug("Subscriptions established")
         except Exception as e:
@@ -133,17 +133,18 @@ class RosServiceHandler:
 
     async def handle_mission_command(self, topic, message):
         """Handle mission command messages by calling ROS service"""
-        self.logger.debug(f"Received mission command message - Topic: {topic}, Message: {message}")
+        self.logger.info(f"Received mission command message - Topic: {topic}, Message: {message}")
+        # Received mission command message - Topic: Backend/mission_command, Message: {'command': 0}
 
         try:
-            command = message["command"]
+            command_value = message["command"]
 
             """
             Start has special handling:
             - Check if mission file exists
             - Tell mission file handler to send mission files to the robot and start the mission
             """
-            if command.name == "START":
+            if command_value == MissionCommandSignals.MISSION_START.value:
                 # Check if mission file exists
                 mission_file_path = Path("/app_shared_data/mission_files/output")
                 if not mission_file_path.exists():
@@ -156,9 +157,6 @@ class RosServiceHandler:
                     return
 
             else:
-                if hasattr(command_value, 'value'):
-                    command_value = command.value
-                
                 self.logger.debug(f"Calling mission_command service with command value: {command_value}")
                 
                 # Execute service call in executor to prevent blocking
@@ -196,6 +194,61 @@ class RosServiceHandler:
             
         except Exception as e:
             self.logger.error(f"Error calling mission_state_request service: {str(e)}", exc_info=True)
+
+    async def handle_mission_files_ready(self, topic, message):
+        # Handle data, send to robot, and start mission
+        self.logger.debug(f"Received mission files ready message - Topic: {topic}, Message: {message}")
+
+        is_success = message["success"]
+        mission_data = message["mission_data"]
+        mission_name = "mission_downtown_single_waypoint"
+
+        if not is_success:
+            self.logger.error("Mission files not ready, cannot start mission")
+            return
+        
+        try:
+            # Create service proxy for mission file transfer
+            loop = asyncio.get_event_loop()
+            mission_file_service = rospy.ServiceProxy(
+                'mission_file_transfer',
+                mission_file_transfer
+            )
+                
+            # Call service to transfer mission data
+            try:
+                # Create the service request
+                request = mission_file_transfer._request_class()  # Create proper request object
+                request.mission_name = mission_name
+                request.waypoints = mission_data
+
+                response = await loop.run_in_executor(
+                    None,
+                    lambda: mission_file_service(request)  # Pass request object
+                )
+                
+                if not response.success:
+                    self.logger.error(f"Mission file transfer failed: {response.message}")
+                    return
+                    
+                self.logger.info("Mission files transferred successfully, sending start command")
+
+                # Send start command
+                response = await loop.run_in_executor(
+                    None, 
+                    lambda: self.mission_command_proxy(command=int(MissionCommandSignals.MISSION_START.value))
+                )
+                
+                self.logger.debug(f"Mission command service response: {response}")
+
+            except Exception as e:
+                self.logger.error(f"Error during mission file transfer: {str(e)}")
+                return
+
+        except Exception as e:
+            self.logger.error(f"Failed to create service proxy: {str(e)}")
+            return
+
 
     async def stop(self):
         self.message_broker.stop()
@@ -568,10 +621,67 @@ class MissionFileHandler:
         except Exception as e:
             self.logger.error(f"Error processing mission files: {str(e)}")
 
+    async def handle_start_mission_request(self, topic, message):
+        """Handle request to prepare mission data and send to robot
+            @output: {success: bool, mission_data: dict}
+        """
+        self.logger.info("Handling start mission request")
 
-    async def handle_start_mission_request(self, topic, message):    
+        try:
+            if not self.current_mission or not self.current_mission.waypoints:
+                self.logger.error("No mission loaded or mission has no waypoints")
+                await self.message_broker.publish(
+                    "MissionFileHandler/mission_files_ready", 
+                    {"success": False, "mission_data": []}
+                )
+                return
 
+            # Prepare mission data for transfer
+            mission_data = []
+            for waypoint in self.current_mission.waypoints:
+                # Only send waypoints that have reference images
+                if not waypoint.image_path:
+                    self.logger.warning(f"Skipping waypoint {waypoint.index} - no reference image")
+                    continue
+                    
+                # Read image file
+                try:
+                    with open(waypoint.image_path, 'rb') as f:
+                        image_data = f.read()
+                except Exception as e:
+                    self.logger.error(f"Failed to read image file {waypoint.image_path}: {str(e)}")
+                    continue
+                    
+                waypoint_data = {
+                    'gps': {
+                        'latitude': waypoint.latitude,
+                        'longitude': waypoint.longitude
+                    },
+                    'image_data': image_data
+                }
+                mission_data.append(waypoint_data)
+                
+            if not mission_data:
+                self.logger.error("No valid waypoints with images to transfer")
+                await self.message_broker.publish(
+                    "MissionFileHandler/mission_files_ready", 
+                    {"success": False, "mission_data": []}
+                )
+                return
 
+            # If we get here, we have valid waypoints with images
+            self.logger.info(f"Successfully prepared {len(mission_data)} waypoints for transfer")
+            await self.message_broker.publish(
+                "MissionFileHandler/mission_files_ready", 
+                {"success": True, "mission_data": mission_data}
+            )
+                
+        except Exception as e:
+            self.logger.error(f"Error handling start mission request: {str(e)}")
+            await self.message_broker.publish(
+                "MissionFileHandler/mission_files_ready", 
+                {"success": False, "mission_data": []}
+            )
 
     async def process_pending_missions(self):
         """Check for and process any pending mission files"""
