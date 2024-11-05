@@ -145,16 +145,8 @@ class RosServiceHandler:
             - Tell mission file handler to send mission files to the robot and start the mission
             """
             if command_value == MissionCommandSignals.MISSION_START.value:
-                # Check if mission file exists
-                mission_file_path = Path("/app_shared_data/mission_files/output")
-                if not mission_file_path.exists():
-                    self.logger.error("Mission file does not exist, cannot start mission")
-                    return
+                await self.message_broker.publish("RosServiceHandler/prepare_mission_files", {})
 
-                else:
-                    await self.message_broker.publish("RosServiceHandler/start_mission", {})
-                    self.logger.debug("Published start mission message")
-                    return
 
             else:
                 self.logger.debug(f"Calling mission_command service with command value: {command_value}")
@@ -201,7 +193,7 @@ class RosServiceHandler:
 
         is_success = message["success"]
         mission_data = message["mission_data"]
-        mission_name = "mission_downtown_single_waypoint"
+        mission_name = "mission_creation_test"
 
         if not is_success:
             self.logger.error("Mission files not ready, cannot start mission")
@@ -217,14 +209,33 @@ class RosServiceHandler:
                 
             # Call service to transfer mission data
             try:
+                from ugv_mission_pkg.msg import MissionWaypoint, GPS
+
                 # Create the service request
-                request = mission_file_transfer._request_class()  # Create proper request object
+                request = mission_file_transfer._request_class()
                 request.mission_name = mission_name
-                request.waypoints = mission_data
+                
+                # Convert dictionary data to ROS messages
+                ros_waypoints = []
+                for wp_data in mission_data:
+                    wp_msg = MissionWaypoint()
+                    
+                    # Create GPS message
+                    gps_msg = GPS()
+                    gps_msg.latitude = wp_data['gps']['latitude']
+                    gps_msg.longitude = wp_data['gps']['longitude']
+                    wp_msg.gps = gps_msg
+                    
+                    # Set image data
+                    wp_msg.image_data = wp_data['image_data']
+                    
+                    ros_waypoints.append(wp_msg)
+                
+                request.waypoints = ros_waypoints
 
                 response = await loop.run_in_executor(
                     None,
-                    lambda: mission_file_service(request)  # Pass request object
+                    lambda: mission_file_service(request)
                 )
                 
                 if not response.success:
@@ -610,7 +621,7 @@ class MissionFileHandler:
         # Subscribe to process mission files requests
         await self.message_broker.subscribe("Backend/make_mission_files", self.handle_make_mission_files_request)
 
-        await self.message_broker.subscribe("RosServiceHandler/start_mission", self.handle_start_mission_request)
+        await self.message_broker.subscribe("RosServiceHandler/prepare_mission_files", self.handle_prepare_mission_files_request)
         
     async def handle_make_mission_files_request(self, topic, message):
         self.logger.info(f"Received process mission files request - Topic: {topic}, Message: {message}")
@@ -621,7 +632,7 @@ class MissionFileHandler:
         except Exception as e:
             self.logger.error(f"Error processing mission files: {str(e)}")
 
-    async def handle_start_mission_request(self, topic, message):
+    async def handle_prepare_mission_files_request(self, topic, message):
         """Handle request to prepare mission data and send to robot
             @output: {success: bool, mission_data: dict}
         """
