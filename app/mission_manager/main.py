@@ -136,21 +136,40 @@ class RosServiceHandler:
         self.logger.debug(f"Received mission command message - Topic: {topic}, Message: {message}")
 
         try:
-            command_value = message["command"]
-            if hasattr(command_value, 'value'):
-                command_value = command_value.value
-            
-            self.logger.debug(f"Calling mission_command service with command value: {command_value}")
-            
-            # Execute service call in executor to prevent blocking
-            loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(
-                None, 
-                lambda: self.mission_command_proxy(command=int(command_value))
-            )
-            
-            self.logger.debug(f"Mission command service response: {response}")
-            
+            command = message["command"]
+
+            """
+            Start has special handling:
+            - Check if mission file exists
+            - Tell mission file handler to send mission files to the robot and start the mission
+            """
+            if command.name == "START":
+                # Check if mission file exists
+                mission_file_path = Path("/app_shared_data/mission_files/output")
+                if not mission_file_path.exists():
+                    self.logger.error("Mission file does not exist, cannot start mission")
+                    return
+
+                else:
+                    await self.message_broker.publish("RosServiceHandler/start_mission", {})
+                    self.logger.debug("Published start mission message")
+                    return
+
+            else:
+                if hasattr(command_value, 'value'):
+                    command_value = command.value
+                
+                self.logger.debug(f"Calling mission_command service with command value: {command_value}")
+                
+                # Execute service call in executor to prevent blocking
+                loop = asyncio.get_event_loop()
+                response = await loop.run_in_executor(
+                    None, 
+                    lambda: self.mission_command_proxy(command=int(command_value))
+                )
+                
+                self.logger.debug(f"Mission command service response: {response}")
+                
         except Exception as e:
             self.logger.error(f"Error calling mission_command service: {str(e)}", exc_info=True)
 
@@ -503,7 +522,6 @@ class TeleopTwistHandler:
             self.logger.error(f"Error stopping Teleop Twist Handler: {str(e)}")
 
 
-
 @dataclass
 class Waypoint:
     """Data structure to hold waypoint information"""
@@ -524,7 +542,7 @@ class MissionFileHandler:
         self.current_mission: Optional[Mission] = None
         
         # Define standard paths
-        self.base_path = Path("app_shared_data/mission_files")
+        self.base_path = Path("/app_shared_data/mission_files")
         self.input_path = self.base_path / "files_to_process"
         self.output_path = self.base_path / "output"
         
@@ -538,6 +556,8 @@ class MissionFileHandler:
 
         # Subscribe to process mission files requests
         await self.message_broker.subscribe("Backend/make_mission_files", self.handle_make_mission_files_request)
+
+        await self.message_broker.subscribe("RosServiceHandler/start_mission", self.handle_start_mission_request)
         
     async def handle_make_mission_files_request(self, topic, message):
         self.logger.info(f"Received process mission files request - Topic: {topic}, Message: {message}")
@@ -547,6 +567,11 @@ class MissionFileHandler:
             
         except Exception as e:
             self.logger.error(f"Error processing mission files: {str(e)}")
+
+
+    async def handle_start_mission_request(self, topic, message):    
+
+
 
     async def process_pending_missions(self):
         """Check for and process any pending mission files"""
@@ -587,9 +612,11 @@ class MissionFileHandler:
                 zip_ref.extractall(temp_dir)
             
             # Parse waylines.wpml
-            wpml_path = temp_dir / "waylines.wpml"
-            if not wpml_path.exists():
+            # Use glob to find the waylines.wpml file regardless of intermediate directory name
+            wpml_paths = list(temp_dir.glob("*/waylines.wpml"))
+            if not wpml_paths:
                 raise FileNotFoundError("waylines.wpml not found in KMZ file")
+            wpml_path = wpml_paths[0]  # Take the first match
                 
             tree = ET.parse(wpml_path)
             root = tree.getroot()
