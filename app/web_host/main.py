@@ -118,6 +118,8 @@ class Backend:
         await self.message_broker.subscribe("Frontend/mission_resume_button_pressed", self.handle_mission_resume_button_pressed)
         await self.message_broker.subscribe("Frontend/teleop_twist_button_pressed", self.handle_teleop_twist_button_pressed)
 
+        await self.message_broker.subscribe("Frontend/make_mission_files", self.handle_make_mission_files)
+
         await self.message_broker.subscribe("Frontend/process_action_button_pressed", self.handle_processing_mode_action)
 
         """
@@ -141,6 +143,7 @@ class Backend:
         await self.message_broker.subscribe("RosConnectionMonitor/connection_status_update", self.handle_robot_connection_status_update)
         await self.message_broker.subscribe("RosServiceHandler/current_state", self.handle_mission_state_update)
         await self.message_broker.subscribe("RosSubHandler/mission_state_update", self.handle_mission_state_update)
+        await self.message_broker.subscribe("MissionFileHandler/mission_files_ready", self.handle_mission_files_ready)
 
         # Initial publisher
         # Loop until processing mode is set, this is in case Backend initializes before ModuleProcessor
@@ -200,6 +203,18 @@ class Backend:
             self.selected_video_topic = message['topic']
             # Publish to ModuleController
             await self.message_broker.publish("Backend/selected_video_topic_update", {"topic": self.selected_video_topic})
+
+    async def handle_make_mission_files(self, topic, message):
+        self.logger.debug(f"Received make mission files request: {message}")
+
+        await self.message_broker.publish("Backend/make_mission_files", {})
+
+    async def handle_mission_files_ready(self, topic, message):
+        self.logger.debug(f"Received mission files ready: {message}")
+        if message["success"]:
+            await self.message_broker.publish("Backend/mission_files_ready", message)
+        else:
+            self.logger.error(f"Mission file creation failed")
 
     async def handle_teleop_twist_button_pressed(self, topic, message):
         self.logger.info(f"Received teleop twist button pressed: {message}")
@@ -270,6 +285,7 @@ class Frontend:
         await self.message_broker.subscribe("Backend/latest_frame", self.handle_video_frame)
         await self.message_broker.subscribe("Backend/processing_mode_update", self.handle_processing_mode_update)
         await self.message_broker.subscribe("Backend/robot_connection_status", self.handle_robot_connection_status)
+        await self.message_broker.subscribe("Backend/mission_files_ready", self.handle_mission_files_ready)
 
     async def index(self):
         return await render_template('index.html', **self.state)
@@ -300,6 +316,23 @@ class Frontend:
     async def handle_mission_state_update(self, topic, message):
         if 'mission_state' in message:
             self.state['mission_state'] = message['mission_state']
+
+    async def handle_mission_files_ready(self, topic, message):
+        """Handle mission files ready message from backend"""
+        self.logger.info(f"Received mission files ready")
+        # Extract waypoint data from the mission data
+        waypoints = []
+        for i, wp_data in enumerate(message['mission_data']):
+            waypoint = {
+                'index': i,
+                'has_image': 'image_data' in wp_data
+            }
+            waypoints.append(waypoint)
+        
+        # Update state with waypoint data
+        self.state['mission_files'] = waypoints
+
+        self.logger.debug(f"Updated mission files state: {self.state['mission_files']}")
 
     async def handle_available_video_topics(self, topic, message):
         if 'topics' in message:
@@ -400,6 +433,9 @@ class Frontend:
                 
                 command = teleop_commands.get(button_id, [0, 0, 0, 0])  # Default to stop if unknown button
                 await self.publish_message("Frontend/teleop_twist_button_pressed", {'command': command})
+
+            elif "make_mission_files_button_pressed" in form:
+                await self.publish_message("Frontend/make_mission_files", {'type': 'make_mission_files'})
 
             else:
                 self.logger.warning(f"Unknown POST request: {form}")

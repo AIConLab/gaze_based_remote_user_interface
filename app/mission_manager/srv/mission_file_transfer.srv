@@ -1,0 +1,5 @@
+string mission_name
+MissionWaypoint[] waypoints
+---
+bool success
+string message

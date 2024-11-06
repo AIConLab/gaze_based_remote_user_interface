@@ -12,26 +12,24 @@ from datetime import datetime
 
 import rospy
 from rospy import ServiceProxy
-from diagnostic_msgs.msg import DiagnosticArray
 from sensor_msgs.msg import CompressedImage
 from std_msgs.msg import UInt8
-from ugv_mission_pkg.srv import mission_commands, mission_states 
+from ugv_mission_pkg.srv import mission_commands, mission_states, mission_file_transfer
+from ugv_mission_pkg.msg import MissionWaypoint, GPS
 
 
-import termios
-import tty
-import threading
-import sys
-import rospy
-from geometry_msgs.msg import Twist, TwistStamped
-import logging
+import shutil
+import yaml
+import zipfile
+import xml.etree.ElementTree as ET
+from dataclasses import dataclass
+from typing import List, Optional
+from pathlib import Path
+
+from geometry_msgs.msg import Twist
+
 from message_broker import MessageBroker
-from select import select
-
-
-
-from message_broker import MessageBroker
-from enum_definitions import ProcessingModes, ProcessingModeActions, MissionStates
+from enum_definitions import MissionStates, MissionCommandSignals
 
 def setup_logging(enable_logging):
     # Import for thread safety
@@ -90,7 +88,8 @@ def setup_logging(enable_logging):
         'RosServiceHandler',
         'RosSubHandler', 
         'RosConnectionMonitor',
-        'TeleopTwistHandler'
+        'TeleopTwistHandler',
+        'MissionFileHandler'
     ]
     
     for logger_name in loggers_to_configure:
@@ -118,6 +117,10 @@ class RosServiceHandler:
         self.mission_command_proxy = ServiceProxy('mission_command', mission_commands)
         self.mission_state_proxy = ServiceProxy('mission_state_request', mission_states)
 
+        self.mission_files_ready_flag = False
+        self.mission_name = "mission_creation_test"
+        self.ros_waypoints = []
+
     async def start(self):
         self.logger.info("Starting ROS Service Handler")
         try:
@@ -126,6 +129,8 @@ class RosServiceHandler:
             
             await self.message_broker.subscribe("Backend/mission_command", self.handle_mission_command)
             await self.message_broker.subscribe("Backend/mission_state_request", self.handle_mission_state_request)
+            await self.message_broker.subscribe("MissionFileHandler/mission_files_ready", self.handle_mission_files_ready)
+
 
             self.logger.debug("Subscriptions established")
         except Exception as e:
@@ -134,23 +139,66 @@ class RosServiceHandler:
     async def handle_mission_command(self, topic, message):
         """Handle mission command messages by calling ROS service"""
         self.logger.debug(f"Received mission command message - Topic: {topic}, Message: {message}")
+        # Received mission command message - Topic: Backend/mission_command, Message: {'command': 0}
 
         try:
             command_value = message["command"]
-            if hasattr(command_value, 'value'):
-                command_value = command_value.value
-            
-            self.logger.debug(f"Calling mission_command service with command value: {command_value}")
-            
-            # Execute service call in executor to prevent blocking
-            loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(
-                None, 
-                lambda: self.mission_command_proxy(command=int(command_value))
-            )
-            
-            self.logger.debug(f"Mission command service response: {response}")
-            
+
+            """
+            Start has special handling:
+            - Check if mission file exists
+            - Tell mission file handler to send mission files to the robot and start the mission
+            """
+            if command_value == MissionCommandSignals.MISSION_START.value:
+                if not self.mission_files_ready_flag:
+                    self.logger.error("Mission files not ready, cannot start mission")
+                    return
+
+                else:
+                    # Create service proxy for mission file transfer
+                    loop = asyncio.get_event_loop()
+                    mission_file_service = rospy.ServiceProxy(
+                        'mission_file_transfer',
+                        mission_file_transfer
+                    )
+
+                    request = mission_file_transfer._request_class()
+
+                    # Prepare request
+                    request.mission_name = self.mission_name
+                    request.waypoints = self.ros_waypoints
+
+                    response = await loop.run_in_executor(
+                        None,
+                        lambda: mission_file_service(request)
+                    )
+                    
+                    if not response.success:
+                        self.logger.error(f"Mission file transfer failed: {response.message}")
+                        return
+                        
+                    self.logger.info("Mission files transferred successfully, sending start command")
+
+                    # Send start command
+                    response = await loop.run_in_executor(
+                        None, 
+                        lambda: self.mission_command_proxy(command=int(MissionCommandSignals.MISSION_START.value))
+                    )
+                    
+                    self.logger.debug(f"Mission command service response: {response}")
+
+            else:
+                self.logger.debug(f"Calling mission_command service with command value: {command_value}")
+                
+                # Execute service call in executor to prevent blocking
+                loop = asyncio.get_event_loop()
+                response = await loop.run_in_executor(
+                    None, 
+                    lambda: self.mission_command_proxy(command=int(command_value))
+                )
+                
+                self.logger.debug(f"Mission command service response: {response}")
+                
         except Exception as e:
             self.logger.error(f"Error calling mission_command service: {str(e)}", exc_info=True)
 
@@ -177,6 +225,40 @@ class RosServiceHandler:
             
         except Exception as e:
             self.logger.error(f"Error calling mission_state_request service: {str(e)}", exc_info=True)
+
+    async def handle_mission_files_ready(self, topic, message):
+        try:
+            if message["success"] is True:
+                # Handle data, send to robot, and start mission
+                self.logger.debug(f"Received mission files ready message - Topic: {topic}, Message: {message}")
+
+                mission_data = message["mission_data"]
+
+                self.ros_waypoints = []
+                for wp_data in mission_data:
+                    wp_msg = MissionWaypoint()
+                    
+                    # Create GPS message
+                    gps_msg = GPS()
+                    gps_msg.latitude = wp_data['gps']['latitude']
+                    gps_msg.longitude = wp_data['gps']['longitude']
+                    wp_msg.gps = gps_msg
+                    
+                    # Set image data
+                    wp_msg.image_data = wp_data['image_data']
+                    
+                    self.ros_waypoints.append(wp_msg)
+
+
+                self.mission_files_ready_flag = True
+
+            else:
+                self.logger.debug("Mission files not ready")
+                self.mission_files_ready_flag = False
+                
+        except Exception as e:
+            self.logger.error(f"Failed to create service proxy: {str(e)}")
+            return
 
     async def stop(self):
         self.message_broker.stop()
@@ -503,6 +585,278 @@ class TeleopTwistHandler:
             self.logger.error(f"Error stopping Teleop Twist Handler: {str(e)}")
 
 
+@dataclass
+class Waypoint:
+    """Data structure to hold waypoint information"""
+    index: int
+    latitude: float
+    longitude: float
+    image_path: Optional[str] = None
+    
+@dataclass
+class Mission:
+    """Data structure to hold mission information"""
+    waypoints: List[Waypoint]
+    
+class MissionFileHandler:
+    def __init__(self, message_broker=None):
+        self.message_broker = message_broker
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.current_mission: Optional[Mission] = None
+        
+        # Define standard paths
+        self.base_path = Path("/app_shared_data/mission_files")
+        self.input_path = self.base_path / "files_to_process"
+        self.output_path = self.base_path / "output"
+
+        self.mission_data = []
+        
+    async def start(self):
+        """Initialize the handler and create necessary directories"""
+        self.logger.info("Starting Mission File Handler")
+        
+        # Ensure directories exist
+        self.input_path.mkdir(parents=True, exist_ok=True)
+        self.output_path.mkdir(parents=True, exist_ok=True)
+
+        # Subscribe to process mission files requests
+        await self.message_broker.subscribe("Backend/make_mission_files", self.handle_make_mission_files_request)
+
+        await self.message_broker.subscribe("RosServiceHandler/prepare_mission_files", self.handle_prepare_mission_files_request)
+        
+    async def handle_make_mission_files_request(self, topic, message):
+        self.logger.info(f"Received process mission files request - Topic: {topic}, Message: {message}")
+        
+        try:
+            await self.process_pending_missions()
+
+            await self.message_broker.publish("MissionFileHandler/mission_files_ready", 
+                {"success": True, "mission_data": self.mission_data}
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Error processing mission files: {str(e)}")
+
+    async def handle_prepare_mission_files_request(self, topic, message):
+        """Handle request to prepare mission data and send to robot
+            @output: {success: bool, mission_data: dict}
+        """
+        self.logger.info("Handling start mission request")
+
+        try:
+            if not self.current_mission or not self.current_mission.waypoints:
+                self.logger.error("No mission loaded or mission has no waypoints")
+                await self.message_broker.publish(
+                    "MissionFileHandler/mission_files_ready", 
+                    {"success": False, "mission_data": []}
+                )
+                return
+                
+            if not self.mission_data:
+                self.logger.error("No valid waypoints with images to transfer")
+                await self.message_broker.publish(
+                    "MissionFileHandler/mission_files_ready", 
+                    {"success": False, "mission_data": []}
+                )
+                return
+
+            # If we get here, we have valid waypoints with images
+            self.logger.info(f"Successfully prepared {len(self.mission_data)} waypoints for transfer")
+            await self.message_broker.publish(
+                "MissionFileHandler/mission_files_ready", 
+                {"success": True, "mission_data": self.mission_data}
+            )
+                
+        except Exception as e:
+            self.logger.error(f"Error handling start mission request: {str(e)}")
+            await self.message_broker.publish(
+                "MissionFileHandler/mission_files_ready", 
+                {"success": False, "mission_data": []}
+            )
+
+    async def process_pending_missions(self):
+        """Check for and process any pending mission files"""
+        try:
+            kmz_path = self.input_path / "mission.kmz"
+            if kmz_path.exists():
+                self.logger.info("Found mission.kmz file, processing...")
+                
+                # Extract waypoints from KMZ
+                waypoints = await self.extract_waypoints_from_kmz(kmz_path)
+                
+                # Associate images with waypoints
+                await self.associate_images_with_waypoints(waypoints)
+                
+                # Create mission structure
+                self.current_mission = Mission(waypoints=waypoints)
+                
+                # Generate output files
+                await self.generate_output_files()
+
+                # Prepare mission data
+                await self.prepare_mission_data()
+                
+                self.logger.info("Mission processing complete")
+                
+        except Exception as e:
+            self.logger.error(f"Error processing mission files: {str(e)}")
+            
+    async def extract_waypoints_from_kmz(self, kmz_path: Path) -> List[Waypoint]:
+        """Extract waypoints from KMZ file"""
+        self.logger.debug(f"Extracting waypoints from {kmz_path}")
+        waypoints = []
+        
+        try:
+            # Create temporary directory for extraction
+            temp_dir = self.input_path / "temp_kmz"
+            temp_dir.mkdir(exist_ok=True)
+            
+            # Extract KMZ file
+            with zipfile.ZipFile(kmz_path, 'r') as zip_ref:
+                zip_ref.extractall(temp_dir)
+            
+            # Parse waylines.wpml
+            # Use glob to find the waylines.wpml file regardless of intermediate directory name
+            wpml_paths = list(temp_dir.glob("*/waylines.wpml"))
+            if not wpml_paths:
+                raise FileNotFoundError("waylines.wpml not found in KMZ file")
+            wpml_path = wpml_paths[0]  # Take the first match
+                
+            tree = ET.parse(wpml_path)
+            root = tree.getroot()
+            
+            # Find all Placemark elements (waypoints)
+            ns = {'kml': 'http://www.opengis.net/kml/2.2',
+                  'wpml': 'http://www.dji.com/wpmz/1.0.6'}
+                  
+            for placemark in root.findall('.//kml:Placemark', ns):
+                # Extract index
+                index = int(placemark.find('wpml:index', ns).text)
+                
+                # Extract coordinates
+                coords = placemark.find('.//kml:coordinates', ns).text.strip().split(',')
+                longitude = float(coords[0])
+                latitude = float(coords[1])
+                
+                waypoint = Waypoint(index=index, latitude=latitude, longitude=longitude)
+                waypoints.append(waypoint)
+                
+            # Sort waypoints by index
+            waypoints.sort(key=lambda w: w.index)
+            
+            self.logger.info(f"Extracted {len(waypoints)} waypoints")
+            
+            # Cleanup temp directory
+            shutil.rmtree(temp_dir)
+            
+            return waypoints
+            
+        except Exception as e:
+            self.logger.error(f"Error extracting waypoints: {str(e)}")
+            raise
+    async def associate_images_with_waypoints(self, waypoints: List[Waypoint]):
+        """Associate images from waypoint folders with waypoint objects"""
+        self.logger.debug("Associating images with waypoints")
+        
+        try:
+            for waypoint in waypoints:
+                # Check for waypoint folder
+                waypoint_dir = self.input_path / f"waypoint_{waypoint.index}"
+                if not waypoint_dir.exists():
+                    self.logger.warning(f"No image folder found for waypoint {waypoint.index}")
+                    continue
+                    
+                # Find JPEG image in waypoint folder
+                jpeg_files = list(waypoint_dir.glob("*.jpg"))
+                if not jpeg_files:
+                    self.logger.warning(f"No JPEG image found for waypoint {waypoint.index}")
+                    continue
+                    
+                # Use the first JPEG found
+                waypoint.image_path = str(jpeg_files[0])
+                self.logger.debug(f"Associated image {waypoint.image_path} with waypoint {waypoint.index}")
+                
+        except Exception as e:
+            self.logger.error(f"Error associating images: {str(e)}")
+            raise
+            
+    async def generate_output_files(self):
+        """Generate output files for validation"""
+        if not self.current_mission:
+            self.logger.warning("No mission to generate output files for")
+            return
+            
+        try:
+            # Clear existing output directory
+            if self.output_path.exists():
+                shutil.rmtree(self.output_path)
+            self.output_path.mkdir()
+            
+            for waypoint in self.current_mission.waypoints:
+                # Create waypoint directory
+                waypoint_dir = self.output_path / f"waypoint_{waypoint.index:02d}"
+                waypoint_dir.mkdir()
+                
+                # Create waypoint YAML file
+                waypoint_data = {
+                    'index': waypoint.index,
+                    'latitude': waypoint.latitude,
+                    'longitude': waypoint.longitude,
+                    'has_image': bool(waypoint.image_path)
+                }
+                
+                yaml_path = waypoint_dir / "waypoint.yaml"
+                with open(yaml_path, 'w') as f:
+                    yaml.dump(waypoint_data, f)
+                    
+                # Copy image if it exists
+                if waypoint.image_path:
+                    image_dest = waypoint_dir / f"waypoint_image_{waypoint.index:02d}.jpeg"
+                    shutil.copy2(waypoint.image_path, image_dest)
+                    
+            self.logger.info("Output files generated successfully")
+            
+        except Exception as e:
+            self.logger.error(f"Error generating output files: {str(e)}")
+            raise
+            
+    async def prepare_mission_data(self):
+        # Prepare mission data for transfer to robot
+        try:
+            # Clear existing mission data
+            self.mission_data = []
+
+            if not self.current_mission or not self.current_mission.waypoints:
+                self.logger.error("No mission loaded or mission has no waypoints")
+                return
+
+            for waypoint in self.current_mission.waypoints:
+                if not waypoint.image_path:
+                    self.logger.warning(f"No image found for waypoint {waypoint.index}")
+                    continue
+                
+                # Read image data
+                with open(waypoint.image_path, 'rb') as f:
+                    image_data = f.read()
+                    
+                # Create dictionary with GPS and image data
+                waypoint_data = {
+                    'gps': {'latitude': waypoint.latitude, 'longitude': waypoint.longitude},
+                    'image_data': image_data
+                }
+                
+                self.mission_data.append(waypoint_data)
+                
+            self.logger.info(f"Prepared {len(self.mission_data)} waypoints for transfer")
+            
+        except Exception as e:
+            self.logger.error(f"Error preparing mission data: {str(e)}")
+            raise
+    
+    async def stop(self):
+        """Cleanup when stopping the handler"""
+        self.logger.info("Stopping Mission File Handler")
+
 
 async def main(enable_logging):
     try:
@@ -515,6 +869,7 @@ async def main(enable_logging):
         ros_sub_message_broker = MessageBroker(1024 * 8)
         ros_connection_monitor_message_broker = MessageBroker(1024)
         teleop_twist_message_broker = MessageBroker(1024)
+        mission_file_handler_message_broker = MessageBroker(1024)
         logger.debug("Message brokers created")
 
         # Make handlers
@@ -524,6 +879,7 @@ async def main(enable_logging):
                                       image_quality=50)
         ros_connection_monitor = RosConnectionMonitor(message_broker=ros_connection_monitor_message_broker)
         teleop_twist_handler = TeleopTwistHandler(message_broker=teleop_twist_message_broker)
+        mission_file_handler = MissionFileHandler(message_broker=mission_file_handler_message_broker)
         logger.debug("Handlers created")
 
         try:
@@ -531,7 +887,8 @@ async def main(enable_logging):
                 ros_service_handler.start(),
                 ros_sub_handler.start(),
                 ros_connection_monitor.start(),
-                teleop_twist_handler.start()
+                teleop_twist_handler.start(),
+                mission_file_handler.start()
             )
         except Exception as e:
             logger.error(f"Error in handler startup: {str(e)}", exc_info=True)
@@ -557,6 +914,7 @@ async def main(enable_logging):
         await ros_sub_handler.stop()
         await ros_connection_monitor.stop()
         await teleop_twist_handler.stop()
+        await mission_file_handler.stop()
         logger.info("Shutdown complete")
 
 

@@ -1,248 +1,285 @@
 document.addEventListener('DOMContentLoaded', function() {
-
-    const teleopControls = document.querySelector('.teleop-controls');
-    const teleopToggle = document.getElementById('teleop-toggle');
-    let teleopEnabled = false;
-
-    // Handle teleop toggle
-    teleopToggle.addEventListener('click', function() {
-        teleopEnabled = !teleopEnabled;
-        teleopToggle.textContent = teleopEnabled ? 'Disable Teleop' : 'Enable Teleop';
-        teleopControls.classList.toggle('hidden');
-        
-        fetch('/button_press', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: 'teleop_toggle_pressed=true'
-        });
-    });
-
-    // Handle teleop button presses
-    document.querySelectorAll('.teleop-btn').forEach(button => {
-        button.addEventListener('click', function() {
-            if (!teleopEnabled) return;
-            fetch('/button_press', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: `teleop_button_pressed=${encodeURIComponent(this.id)}`
-            });
-        });
-    });
-
-
-    // Process Action Buttons
-    const processActionButtons = {
-        'segment-button': 'SEGMENT',
-        'make-waypoint-button': 'MAKE_WAYPOINT', 
-        'cancel-button': 'CANCEL',
-        'accept-button': 'ACCEPT',
-        'cycle-left-button': 'CYCLE_LEFT',
-        'cycle-right-button': 'CYCLE_RIGHT'
+    // Configuration and state
+    const config = {
+        processActionButtons: {
+            'segment-button': 'SEGMENT',
+            'make-waypoint-button': 'MAKE_WAYPOINT', 
+            'cancel-button': 'CANCEL',
+            'accept-button': 'ACCEPT',
+            'cycle-left-button': 'CYCLE_LEFT',
+            'cycle-right-button': 'CYCLE_RIGHT'
+        }
     };
 
-    // Video feed elements
-    const videoTopicsSelect = document.getElementById('video-topics');
-    const videoFeed = document.getElementById('video-feed');
+    const state = {
+        teleopEnabled: false,
+        gazeEnabled: false
+    };
 
-    // Gaze button
-    const gazeToggle = document.getElementById('gaze-toggle');
-    let gazeEnabled = false;
-
-    // Mission buttons
-    const missionStart = document.getElementById('mission-start');
-    const missionPause = document.getElementById('mission-pause');
-    const missionResume = document.getElementById('mission-resume');
-    const missionAbort = document.getElementById('mission-abort');
-
-    // State elements
-    const connectionStatus = document.getElementById('connection-status');
-    const missionState = document.getElementById('mission-state');
-
-    // Setup video feed
-    function setupVideoFeed() {
-        // Add timestamp to prevent caching
-        const timestamp = new Date().getTime();
-        videoFeed.src = `/video_feed?t=${timestamp}`;
+    // UI Elements
+    const elements = {
+        // Video elements
+        videoFeed: document.getElementById('video-feed'),
+        videoTopicsSelect: document.getElementById('video-topics'),
         
-        videoFeed.onerror = function() {
-            console.error('Video feed error - attempting to reconnect...');
-            setTimeout(() => {
-                if (document.visibilityState === 'visible') {
-                    setupVideoFeed();
+        // Control buttons
+        teleopControls: document.querySelector('.teleop-controls'),
+        teleopToggle: document.getElementById('teleop-toggle'),
+        gazeToggle: document.getElementById('gaze-toggle'),
+        makeMissionFilesButton: document.getElementById('make-mission-files'),
+        
+        // Mission buttons
+        missionStart: document.getElementById('mission-start'),
+        missionPause: document.getElementById('mission-pause'),
+        missionResume: document.getElementById('mission-resume'),
+        missionAbort: document.getElementById('mission-abort'),
+        
+        // State elements
+        connectionStatus: document.getElementById('connection-status'),
+        missionState: document.getElementById('mission-state')
+    };
+
+    const fileTreeHandler = {
+        updateFileTree(filesData) {
+            const fileTree = document.querySelector('.file-tree');
+            if (!filesData || Object.keys(filesData).length === 0) {
+                fileTree.innerHTML = `
+                    <div class="file-tree-empty">
+                        No files loaded. Try clicking the "Make Mission Files" button...
+                    </div>
+                `;
+                return;
+            }
+
+            const formatTree = (name, data) => {
+                let html = '<ul>';
+                if (Array.isArray(data)) {
+                    data.forEach(item => {
+                        html += `
+                            <li>
+                                <span class="folder">📁 waypoint_${String(item.index).padStart(2, '0')}</span>
+                                <ul>
+                        `;
+                        
+                        // Add image file if it exists
+                        if (item.has_image) {
+                            html += `
+                                <li>
+                                    <span class="file">📄 waypoint_image_${String(item.index).padStart(2, '0')}.jpeg</span>
+                                </li>
+                            `;
+                        }
+                        
+                        // Add waypoint.yaml
+                        html += `
+                                <li>
+                                    <span class="file">📄 waypoint.yaml</span>
+                                </li>
+                            </ul>
+                            </li>
+                        `;
+                    });
                 }
-            }, 1000);
-        };
-    }
+                html += '</ul>';
+                return html;
+            };
 
-    // Monitor visibility changes
-    document.addEventListener('visibilitychange', function() {
-        if (document.visibilityState === 'visible') {
-            setupVideoFeed();
+            fileTree.innerHTML = `
+                <div class="file-tree-root">
+                    <span class="folder">📁 Mission Files</span>
+                    ${formatTree('root', filesData)}
+                </div>
+            `;
         }
-    });
+    };
 
-    // Initial setup
-    setupVideoFeed();
-    
-    // Handle topic changes
-    videoTopicsSelect.addEventListener('change', function() {
-        const selectedTopic = this.value;
-        fetch('/button_press', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: `video_topic_selected=${encodeURIComponent(selectedTopic)}`
-        }).then(() => {
-            setupVideoFeed();
-        });
-    });
 
-    // Handle gaze toggle
-    gazeToggle.addEventListener('click', function() {
-        gazeEnabled = !gazeEnabled;        
-        gazeToggle.textContent = gazeEnabled ? 'Disable Gaze' : 'Enable Gaze';
-        
-        fetch('/button_press', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: 'gaze_button_pressed=true'
-        });
-    });
-
-    // Handle mission buttons
-    missionStart.addEventListener('click', function() {
-        fetch('/button_press', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: 'mission_start_button_pressed=true'
-        });
-    });
-
-    missionPause.addEventListener('click', function() {
-        fetch('/button_press', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: 'mission_pause_button_pressed=true'
-        });
-    });
-
-    missionResume.addEventListener('click', function() {
-        fetch('/button_press', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: 'mission_resume_button_pressed=true'
-        });
-    });
-
-    missionAbort.addEventListener('click', function() {
-        fetch('/button_press', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: 'mission_abort_button_pressed=true'
-        });
-    });
-
-    // Function to update UI elements based on state
-    function updateUIFromState(state) {
-        if (connectionStatus) {
-            connectionStatus.textContent = state.robot_connected ? 'Connected' : 'Disconnected';
-        }
-        
-        if (missionState) {
-            missionState.textContent = state.mission_state || 'Unknown';
-        }
-    }
-
-    // Add state polling function
-    async function pollState() {
-        try {
-            const response = await fetch('/state');
-            const state = await response.json();
+    // Video feed handling
+    const videoHandler = {
+        setup() {
+            const timestamp = new Date().getTime();
+            elements.videoFeed.src = `/video_feed?t=${timestamp}`;
             
-            // Update UI elements
-            updateUIFromState(state);
+            elements.videoFeed.onerror = () => {
+                console.error('Video feed error - attempting to reconnect...');
+                setTimeout(() => {
+                    if (document.visibilityState === 'visible') {
+                        this.setup();
+                    }
+                }, 1000);
+            };
+        },
+
+        handleTopicChange(selectedTopic) {
+            fetch('/button_press', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: `video_topic_selected=${encodeURIComponent(selectedTopic)}`
+            }).then(() => this.setup());
+        }
+    };
+
+    // Teleop handling
+    const teleopHandler = {
+        toggleTeleop() {
+            state.teleopEnabled = !state.teleopEnabled;
+            elements.teleopToggle.textContent = state.teleopEnabled ? 'Disable Teleop' : 'Enable Teleop';
+            elements.teleopControls.classList.toggle('hidden');
             
+            fetch('/button_press', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: 'teleop_toggle_pressed=true'
+            });
+        },
+
+        handleButtonPress(buttonId) {
+            if (!state.teleopEnabled) return;
+            fetch('/button_press', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: `teleop_button_pressed=${encodeURIComponent(buttonId)}`
+            });
+        }
+    };
+
+    // Mission control handling
+    const missionHandler = {
+        handleButton(action) {
+            fetch('/button_press', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: `mission_${action}_button_pressed=true`
+            });
+        }
+    };
+
+    const makeMissionFilesHandler = {
+        handleButton() {
+            fetch('/button_press', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: `make_mission_files_button_pressed=true`
+            });
+        }
+    };
+
+    // State handling
+    const stateHandler = {
+        updateUI(state) {
+            if (elements.connectionStatus) {
+                elements.connectionStatus.textContent = state.robot_connected ? 'Connected' : 'Disconnected';
+            }
+            if (elements.missionState) {
+                elements.missionState.textContent = state.mission_state || 'Unknown';
+            }
+            if ('mission_files' in state) {
+                        fileTreeHandler.updateFileTree(state.mission_files);
+                    }
+        },
+
+        async pollState() {
+            try {
+                const response = await fetch('/state');
+                const state = await response.json();
+                
+                this.updateUI(state);
+                this.updateInterfaceBanner(state);
+            } catch (error) {
+                console.error('Error polling state:', error);
+            }
+        },
+
+        updateInterfaceBanner(state) {
             const interfaceBanner = document.querySelector('.interface-banner');
             const currentMode = interfaceBanner.dataset.mode;
 
             if (state.processing_mode && state.processing_mode !== currentMode) {
-                // Update the interface banner based on the new mode
-                switch(state.processing_mode) {
-                    case 'INITIAL_FIXATION':
-                        interfaceBanner.innerHTML = `
-                            <button id="segment-button">Segment</button>
-                            <button id="make-waypoint-button">Make Waypoint</button>
-                            <button id="cancel-button">Cancel</button>
-                        `;
-                        break;
-                    case 'SEGMENTATION_RESULTS':
-                        interfaceBanner.innerHTML = `
-                            <button id="cycle-left-button">←</button>
-                            <button id="cycle-right-button">→</button>
-                            <button id="accept-button">Accept</button>
-                            <button id="cancel-button">Cancel</button>
-                        `;
-                        break;
-                    case 'WAYPOINT_RESULTS':
-                        interfaceBanner.innerHTML = `
-                            <button id="accept-button">Accept</button>
-                            <button id="cancel-button">Cancel</button>
-                        `;
-                        break;
-                    default:
-                        interfaceBanner.innerHTML = '';
-                }
-                
-                // Update the data-mode attribute
+                this.updateBannerContent(interfaceBanner, state.processing_mode);
                 interfaceBanner.dataset.mode = state.processing_mode;
-                
-                // Reattach event listeners to new buttons
                 attachProcessActionButtonListeners();
             }
-        } catch (error) {
-            console.error('Error polling state:', error);
+        },
+
+        updateBannerContent(banner, mode) {
+            const content = {
+                'INITIAL_FIXATION': `
+                    <button id="segment-button">Segment</button>
+                    <button id="make-waypoint-button">Make Waypoint</button>
+                    <button id="cancel-button">Cancel</button>
+                `,
+                'SEGMENTATION_RESULTS': `
+                    <button id="cycle-left-button">←</button>
+                    <button id="cycle-right-button">→</button>
+                    <button id="accept-button">Accept</button>
+                    <button id="cancel-button">Cancel</button>
+                `,
+                'WAYPOINT_RESULTS': `
+                    <button id="accept-button">Accept</button>
+                    <button id="cancel-button">Cancel</button>
+                `
+            };
+            banner.innerHTML = content[mode] || '';
         }
+    };
+
+    // Event listeners setup
+    function setupEventListeners() {
+        // Video feed listeners
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                videoHandler.setup();
+            }
+        });
+        elements.videoTopicsSelect.addEventListener('change', (e) => videoHandler.handleTopicChange(e.target.value));
+
+        // Teleop listeners
+        elements.teleopToggle.addEventListener('click', () => teleopHandler.toggleTeleop());
+        document.querySelectorAll('.teleop-btn').forEach(button => {
+            button.addEventListener('click', () => teleopHandler.handleButtonPress(button.id));
+        });
+
+        // Mission button listeners
+        elements.missionStart.addEventListener('click', () => missionHandler.handleButton('start'));
+        elements.missionPause.addEventListener('click', () => missionHandler.handleButton('pause'));
+        elements.missionResume.addEventListener('click', () => missionHandler.handleButton('resume'));
+        elements.missionAbort.addEventListener('click', () => missionHandler.handleButton('abort'));
+
+        // Make mission files button
+        elements.makeMissionFilesButton.addEventListener('click', () => makeMissionFilesHandler.handleButton());
+
+        // Gaze toggle
+        elements.gazeToggle.addEventListener('click', function() {
+            state.gazeEnabled = !state.gazeEnabled;
+            this.textContent = state.gazeEnabled ? 'Disable Gaze' : 'Enable Gaze';
+            fetch('/button_press', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: 'gaze_button_pressed=true'
+            });
+        });
     }
 
-    // Function to attach event listeners to process action buttons
+    // Process action button handling
     function attachProcessActionButtonListeners() {
-        Object.keys(processActionButtons).forEach(buttonId => {
+        Object.keys(config.processActionButtons).forEach(buttonId => {
             const button = document.getElementById(buttonId);
             if (button) {
-                button.addEventListener('click', function() {
+                button.addEventListener('click', () => {
                     fetch('/button_press', {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/x-www-form-urlencoded',
-                        },
-                        body: `process_action_button_pressed=${processActionButtons[buttonId]}`
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: `process_action_button_pressed=${config.processActionButtons[buttonId]}`
                     });
                 });
             }
         });
     }
 
-    // Poll every second
-    setInterval(pollState, 1000);
-
-    // Initial state poll
-    pollState();
-
-    // Add event listeners for all process action buttons
+    // Initialize
+    videoHandler.setup();
+    setupEventListeners();
     attachProcessActionButtonListeners();
+    setInterval(() => stateHandler.pollState(), 1000);
+    stateHandler.pollState();
 });
