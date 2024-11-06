@@ -39,6 +39,61 @@ document.addEventListener('DOMContentLoaded', function() {
         missionState: document.getElementById('mission-state')
     };
 
+    const fileTreeHandler = {
+        updateFileTree(filesData) {
+            const fileTree = document.querySelector('.file-tree');
+            if (!filesData || Object.keys(filesData).length === 0) {
+                fileTree.innerHTML = `
+                    <div class="file-tree-empty">
+                        No files loaded. Try clicking the "Make Mission Files" button...
+                    </div>
+                `;
+                return;
+            }
+
+            const formatTree = (name, data) => {
+                let html = '<ul>';
+                if (Array.isArray(data)) {
+                    data.forEach(item => {
+                        html += `
+                            <li>
+                                <span class="folder">📁 waypoint_${String(item.index).padStart(2, '0')}</span>
+                                <ul>
+                        `;
+                        
+                        // Add image file if it exists
+                        if (item.has_image) {
+                            html += `
+                                <li>
+                                    <span class="file">📄 waypoint_image_${String(item.index).padStart(2, '0')}.jpeg</span>
+                                </li>
+                            `;
+                        }
+                        
+                        // Add waypoint.yaml
+                        html += `
+                                <li>
+                                    <span class="file">📄 waypoint.yaml</span>
+                                </li>
+                            </ul>
+                            </li>
+                        `;
+                    });
+                }
+                html += '</ul>';
+                return html;
+            };
+
+            fileTree.innerHTML = `
+                <div class="file-tree-root">
+                    <span class="folder">📁 Mission Files</span>
+                    ${formatTree('root', filesData)}
+                </div>
+            `;
+        }
+    };
+
+
     // Video feed handling
     const videoHandler = {
         setup() {
@@ -118,6 +173,9 @@ document.addEventListener('DOMContentLoaded', function() {
             if (elements.missionState) {
                 elements.missionState.textContent = state.mission_state || 'Unknown';
             }
+            if ('mission_files' in state) {
+                        fileTreeHandler.updateFileTree(state.mission_files);
+                    }
         },
 
         async pollState() {

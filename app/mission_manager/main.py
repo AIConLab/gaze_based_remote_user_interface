@@ -15,6 +15,7 @@ from rospy import ServiceProxy
 from sensor_msgs.msg import CompressedImage
 from std_msgs.msg import UInt8
 from ugv_mission_pkg.srv import mission_commands, mission_states, mission_file_transfer
+from ugv_mission_pkg.msg import MissionWaypoint, GPS
 
 
 import shutil
@@ -116,6 +117,10 @@ class RosServiceHandler:
         self.mission_command_proxy = ServiceProxy('mission_command', mission_commands)
         self.mission_state_proxy = ServiceProxy('mission_state_request', mission_states)
 
+        self.mission_files_ready_flag = False
+        self.mission_name = "mission_creation_test"
+        self.ros_waypoints = []
+
     async def start(self):
         self.logger.info("Starting ROS Service Handler")
         try:
@@ -133,7 +138,7 @@ class RosServiceHandler:
 
     async def handle_mission_command(self, topic, message):
         """Handle mission command messages by calling ROS service"""
-        self.logger.info(f"Received mission command message - Topic: {topic}, Message: {message}")
+        self.logger.debug(f"Received mission command message - Topic: {topic}, Message: {message}")
         # Received mission command message - Topic: Backend/mission_command, Message: {'command': 0}
 
         try:
@@ -145,8 +150,42 @@ class RosServiceHandler:
             - Tell mission file handler to send mission files to the robot and start the mission
             """
             if command_value == MissionCommandSignals.MISSION_START.value:
-                await self.message_broker.publish("RosServiceHandler/prepare_mission_files", {})
+                if not self.mission_files_ready_flag:
+                    self.logger.error("Mission files not ready, cannot start mission")
+                    return
 
+                else:
+                    # Create service proxy for mission file transfer
+                    loop = asyncio.get_event_loop()
+                    mission_file_service = rospy.ServiceProxy(
+                        'mission_file_transfer',
+                        mission_file_transfer
+                    )
+
+                    request = mission_file_transfer._request_class()
+
+                    # Prepare request
+                    request.mission_name = self.mission_name
+                    request.waypoints = self.ros_waypoints
+
+                    response = await loop.run_in_executor(
+                        None,
+                        lambda: mission_file_service(request)
+                    )
+                    
+                    if not response.success:
+                        self.logger.error(f"Mission file transfer failed: {response.message}")
+                        return
+                        
+                    self.logger.info("Mission files transferred successfully, sending start command")
+
+                    # Send start command
+                    response = await loop.run_in_executor(
+                        None, 
+                        lambda: self.mission_command_proxy(command=int(MissionCommandSignals.MISSION_START.value))
+                    )
+                    
+                    self.logger.debug(f"Mission command service response: {response}")
 
             else:
                 self.logger.debug(f"Calling mission_command service with command value: {command_value}")
@@ -188,35 +227,14 @@ class RosServiceHandler:
             self.logger.error(f"Error calling mission_state_request service: {str(e)}", exc_info=True)
 
     async def handle_mission_files_ready(self, topic, message):
-        # Handle data, send to robot, and start mission
-        self.logger.debug(f"Received mission files ready message - Topic: {topic}, Message: {message}")
-
-        is_success = message["success"]
-        mission_data = message["mission_data"]
-        mission_name = "mission_creation_test"
-
-        if not is_success:
-            self.logger.error("Mission files not ready, cannot start mission")
-            return
-        
         try:
-            # Create service proxy for mission file transfer
-            loop = asyncio.get_event_loop()
-            mission_file_service = rospy.ServiceProxy(
-                'mission_file_transfer',
-                mission_file_transfer
-            )
-                
-            # Call service to transfer mission data
-            try:
-                from ugv_mission_pkg.msg import MissionWaypoint, GPS
+            if message["success"] is True:
+                # Handle data, send to robot, and start mission
+                self.logger.debug(f"Received mission files ready message - Topic: {topic}, Message: {message}")
 
-                # Create the service request
-                request = mission_file_transfer._request_class()
-                request.mission_name = mission_name
-                
-                # Convert dictionary data to ROS messages
-                ros_waypoints = []
+                mission_data = message["mission_data"]
+
+                self.ros_waypoints = []
                 for wp_data in mission_data:
                     wp_msg = MissionWaypoint()
                     
@@ -229,37 +247,18 @@ class RosServiceHandler:
                     # Set image data
                     wp_msg.image_data = wp_data['image_data']
                     
-                    ros_waypoints.append(wp_msg)
+                    self.ros_waypoints.append(wp_msg)
+
+
+                self.mission_files_ready_flag = True
+
+            else:
+                self.logger.debug("Mission files not ready")
+                self.mission_files_ready_flag = False
                 
-                request.waypoints = ros_waypoints
-
-                response = await loop.run_in_executor(
-                    None,
-                    lambda: mission_file_service(request)
-                )
-                
-                if not response.success:
-                    self.logger.error(f"Mission file transfer failed: {response.message}")
-                    return
-                    
-                self.logger.info("Mission files transferred successfully, sending start command")
-
-                # Send start command
-                response = await loop.run_in_executor(
-                    None, 
-                    lambda: self.mission_command_proxy(command=int(MissionCommandSignals.MISSION_START.value))
-                )
-                
-                self.logger.debug(f"Mission command service response: {response}")
-
-            except Exception as e:
-                self.logger.error(f"Error during mission file transfer: {str(e)}")
-                return
-
         except Exception as e:
             self.logger.error(f"Failed to create service proxy: {str(e)}")
             return
-
 
     async def stop(self):
         self.message_broker.stop()
@@ -609,6 +608,8 @@ class MissionFileHandler:
         self.base_path = Path("/app_shared_data/mission_files")
         self.input_path = self.base_path / "files_to_process"
         self.output_path = self.base_path / "output"
+
+        self.mission_data = []
         
     async def start(self):
         """Initialize the handler and create necessary directories"""
@@ -628,6 +629,10 @@ class MissionFileHandler:
         
         try:
             await self.process_pending_missions()
+
+            await self.message_broker.publish("MissionFileHandler/mission_files_ready", 
+                {"success": True, "mission_data": self.mission_data}
+            )
             
         except Exception as e:
             self.logger.error(f"Error processing mission files: {str(e)}")
@@ -646,33 +651,8 @@ class MissionFileHandler:
                     {"success": False, "mission_data": []}
                 )
                 return
-
-            # Prepare mission data for transfer
-            mission_data = []
-            for waypoint in self.current_mission.waypoints:
-                # Only send waypoints that have reference images
-                if not waypoint.image_path:
-                    self.logger.warning(f"Skipping waypoint {waypoint.index} - no reference image")
-                    continue
-                    
-                # Read image file
-                try:
-                    with open(waypoint.image_path, 'rb') as f:
-                        image_data = f.read()
-                except Exception as e:
-                    self.logger.error(f"Failed to read image file {waypoint.image_path}: {str(e)}")
-                    continue
-                    
-                waypoint_data = {
-                    'gps': {
-                        'latitude': waypoint.latitude,
-                        'longitude': waypoint.longitude
-                    },
-                    'image_data': image_data
-                }
-                mission_data.append(waypoint_data)
                 
-            if not mission_data:
+            if not self.mission_data:
                 self.logger.error("No valid waypoints with images to transfer")
                 await self.message_broker.publish(
                     "MissionFileHandler/mission_files_ready", 
@@ -681,10 +661,10 @@ class MissionFileHandler:
                 return
 
             # If we get here, we have valid waypoints with images
-            self.logger.info(f"Successfully prepared {len(mission_data)} waypoints for transfer")
+            self.logger.info(f"Successfully prepared {len(self.mission_data)} waypoints for transfer")
             await self.message_broker.publish(
                 "MissionFileHandler/mission_files_ready", 
-                {"success": True, "mission_data": mission_data}
+                {"success": True, "mission_data": self.mission_data}
             )
                 
         except Exception as e:
@@ -712,6 +692,9 @@ class MissionFileHandler:
                 
                 # Generate output files
                 await self.generate_output_files()
+
+                # Prepare mission data
+                await self.prepare_mission_data()
                 
                 self.logger.info("Mission processing complete")
                 
@@ -837,6 +820,39 @@ class MissionFileHandler:
             self.logger.error(f"Error generating output files: {str(e)}")
             raise
             
+    async def prepare_mission_data(self):
+        # Prepare mission data for transfer to robot
+        try:
+            # Clear existing mission data
+            self.mission_data = []
+
+            if not self.current_mission or not self.current_mission.waypoints:
+                self.logger.error("No mission loaded or mission has no waypoints")
+                return
+
+            for waypoint in self.current_mission.waypoints:
+                if not waypoint.image_path:
+                    self.logger.warning(f"No image found for waypoint {waypoint.index}")
+                    continue
+                
+                # Read image data
+                with open(waypoint.image_path, 'rb') as f:
+                    image_data = f.read()
+                    
+                # Create dictionary with GPS and image data
+                waypoint_data = {
+                    'gps': {'latitude': waypoint.latitude, 'longitude': waypoint.longitude},
+                    'image_data': image_data
+                }
+                
+                self.mission_data.append(waypoint_data)
+                
+            self.logger.info(f"Prepared {len(self.mission_data)} waypoints for transfer")
+            
+        except Exception as e:
+            self.logger.error(f"Error preparing mission data: {str(e)}")
+            raise
+    
     async def stop(self):
         """Cleanup when stopping the handler"""
         self.logger.info("Stopping Mission File Handler")
