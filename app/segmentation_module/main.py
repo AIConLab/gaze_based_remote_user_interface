@@ -1,124 +1,220 @@
-import os
-# if using Apple MPS, fall back to CPU for unsupported ops
-os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
+import argparse
+
+
 import numpy as np
 import torch
-import matplotlib.pyplot as plt
 from PIL import Image
-import time
-
-# select the device for computation
-if torch.cuda.is_available():
-    device = torch.device("cuda")
-elif torch.backends.mps.is_available():
-    device = torch.device("mps")
-else:
-    device = torch.device("cpu")
-print(f"using device: {device}")
-
-if device.type == "cuda":
-    # use bfloat16 for the entire notebook
-    torch.autocast("cuda", dtype=torch.bfloat16).__enter__()
-    # turn on tfloat32 for Ampere GPUs (https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices)
-    if torch.cuda.get_device_properties(0).major >= 8:
-        torch.backends.cuda.matmul.allow_tf32 = True
-        torch.backends.cudnn.allow_tf32 = True
-elif device.type == "mps":
-    print(
-        "\nSupport for MPS devices is preliminary. SAM 2 is trained with CUDA and might "
-        "give numerically different outputs and sometimes degraded performance on MPS. "
-        "See e.g. https://github.com/pytorch/pytorch/issues/84936 for a discussion."
-    )
-
-np.random.seed(3)
-
-def show_mask(mask, ax, random_color=False, borders = True):
-    if random_color:
-        color = np.concatenate([np.random.random(3), np.array([0.6])], axis=0)
-    else:
-        color = np.array([30/255, 144/255, 255/255, 0.6])
-    h, w = mask.shape[-2:]
-    mask = mask.astype(np.uint8)
-    mask_image =  mask.reshape(h, w, 1) * color.reshape(1, 1, -1)
-    if borders:
-        import cv2
-        contours, _ = cv2.findContours(mask,cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE) 
-        # Try to smooth contours
-        contours = [cv2.approxPolyDP(contour, epsilon=0.01, closed=True) for contour in contours]
-        mask_image = cv2.drawContours(mask_image, contours, -1, (1, 1, 1, 0.5), thickness=2) 
-    ax.imshow(mask_image)
-
-def show_points(coords, labels, ax, marker_size=375):
-    pos_points = coords[labels==1]
-    neg_points = coords[labels==0]
-    ax.scatter(pos_points[:, 0], pos_points[:, 1], color='green', marker='*', s=marker_size, edgecolor='white', linewidth=1.25)
-    ax.scatter(neg_points[:, 0], neg_points[:, 1], color='red', marker='*', s=marker_size, edgecolor='white', linewidth=1.25)   
-
-def show_box(box, ax):
-    x0, y0 = box[0], box[1]
-    w, h = box[2] - box[0], box[3] - box[1]
-    ax.add_patch(plt.Rectangle((x0, y0), w, h, edgecolor='green', facecolor=(0, 0, 0, 0), lw=2))    
-
-def show_masks(image, masks, scores, point_coords=None, box_coords=None, input_labels=None, borders=True):
-    for i, (mask, score) in enumerate(zip(masks, scores)):
-        plt.figure(figsize=(10, 10))
-        plt.imshow(image)
-        show_mask(mask, plt.gca(), borders=borders)
-        if point_coords is not None:
-            assert input_labels is not None
-            show_points(point_coords, input_labels, plt.gca())
-        if box_coords is not None:
-            # boxes
-            show_box(box_coords, plt.gca())
-        if len(scores) > 1:
-            plt.title(f"Mask {i+1}, Score: {score:.3f}", fontsize=18)
-        plt.axis('off')
-        plt.savefig(f"mask_{i+1}.png")
-
-image = Image.open('/app/test/truck.jpg')
-image = np.array(image.convert("RGB"))
 
 from sam2.build_sam import build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor
 
-sam2_checkpoint = "/sam2/checkpoints/sam2.1_hiera_tiny.pt"
-model_cfg = "/configs/sam2.1/sam2.1_hiera_t.yaml"
+import asyncio
+import numpy as np
+import zmq.asyncio
+import logging
+import os
+import argparse
+from datetime import datetime
 
-sam2_model = build_sam2(model_cfg, sam2_checkpoint, device=device)
-predictor = SAM2ImagePredictor(sam2_model)
+import cv2
 
-# Time the image loading into model
-start_time = time.time()
-predictor.set_image(image)
-image_load_time = time.time() - start_time
-print(f"Image loading time: {image_load_time:.3f} seconds")
+from message_broker import MessageBroker
 
-input_point = np.array([[500, 375]])
-input_label = np.array([1])
+def setup_logging(enable_logging):
+    if enable_logging:
+        log_level = logging.DEBUG
+    else:
+        log_level = logging.INFO
 
-plt.figure(figsize=(10, 10))
-plt.imshow(image)
-show_points(input_point, input_label, plt.gca())
-plt.axis('on')
-plt.show()  
+    logging.basicConfig(
+        level=log_level,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler()
+        ]
+    )
 
-print(predictor._features["image_embed"].shape, predictor._features["image_embed"][-1].shape)
+    if enable_logging:
+        log_dir = "logs"
+        os.makedirs(log_dir, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_file = os.path.join(log_dir, f"app_log_{timestamp}.log")
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setLevel(logging.DEBUG)
+        file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+        logging.getLogger().addHandler(file_handler)
 
-# Time the mask generation
-start_time = time.time()
-masks, scores, logits = predictor.predict(
-    point_coords=input_point,
-    point_labels=input_label,
-    multimask_output=True,
-)
-mask_generation_time = time.time() - start_time
-print(f"Mask generation time: {mask_generation_time:.3f} seconds")
+    # Set the level for specific loggers
+    for logger_name in ['SegmentationModel', 'SegmentationMessenger']:
+        logging.getLogger(logger_name).setLevel(log_level)
 
-sorted_ind = np.argsort(scores)[::-1]
-masks = masks[sorted_ind]
-scores = scores[sorted_ind]
-logits = logits[sorted_ind]
 
-masks.shape  # (number_of_masks) x H x W
+class SegmentationModel:
+    def __init__(self):
+        try:
+            self.logger = logging.getLogger(self.__class__.__name__)
 
-show_masks(image, masks, scores, point_coords=input_point, input_labels=input_label, borders=True)
+            self.sam2_checkpoint = "/sam2/checkpoints/sam2.1_hiera_tiny.pt"
+            self.model_cfg = "/configs/sam2.1/sam2.1_hiera_t.yaml"
+
+            self.device = torch.device("cpu")
+            self.sam2_model = None
+            self.predictor = None
+
+            self.input_label = np.array([1]) 
+
+            self.sam2_model = build_sam2(self.model_cfg, 
+                                    self.sam2_checkpoint, 
+                                    device=self.device)
+            self.predictor = SAM2ImagePredictor(self.sam2_model)
+
+        except Exception as e:
+            self.logger.error(f"Error initializing SegmentationModel: {e}")
+
+
+    async def get_masks(self, image, input_point):
+        try:
+            self.logger.info("Getting masks")
+            
+            # Decode the bytes back into an image for SAM
+            np_arr = np.frombuffer(image, np.uint8)
+            frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+            
+            # Convert input point from dict to numpy array if needed
+            if isinstance(input_point, dict):
+                point_array = np.array([[input_point['x'], input_point['y']]])
+            elif isinstance(input_point, np.ndarray):
+                point_array = input_point
+            else:
+                raise ValueError(f"Unexpected input_point type: {type(input_point)}")
+
+            # Set the image in predictor first
+            self.predictor.set_image(frame)
+
+            masks, scores, logits = self.predictor.predict(
+                point_coords=point_array,
+                point_labels=self.input_label,
+                multimask_output=True,
+            )
+
+            sorted_ind = np.argsort(scores)[::-1]
+            masks = masks[sorted_ind]
+            scores = scores[sorted_ind]
+            logits = logits[sorted_ind]
+
+            self.logger.debug(f"Processed {len(masks)} masks")
+            return masks, scores, logits
+
+        except Exception as e:
+            self.logger.error(f"Error getting masks: {e}")
+            raise e  # Re-raise to ensure proper error handling upstream
+
+class SegmentationMessenger:
+    def __init__(self, 
+                 segmentation_model: SegmentationModel=None, 
+                 message_broker: MessageBroker=None):
+        try:
+            self.logger = logging.getLogger(self.__class__.__name__)
+            self.segmentation_model = segmentation_model
+            self.message_broker = message_broker
+
+        except Exception as e:
+            self.logger.error(f"Error initializing SegmentationMessenger: {e}")
+
+    async def start(self):
+        self.logger.info("Starting SegmentationMessenger")
+        await self.message_broker.subscribe("ModuleController/segment_frame", self.handle_segment_frame)
+
+    async def handle_segment_frame(self, topic, message):
+        try:
+            self.logger.info(f"Received message on topic {topic}")
+
+            image = message["frame"]
+            input_point = message["point"]
+
+            try:
+                masks, scores, logits = await self.segmentation_model.get_masks(image, input_point)
+                
+                # Convert masks to boolean type and serialize
+                masks_list = []
+                for mask in masks:
+                    # Ensure mask is boolean type
+                    bool_mask = mask.astype(bool)
+                    # Convert to uint8 for packbits
+                    uint8_mask = bool_mask.astype(np.uint8)
+                    # Pack the bits
+                    mask_bytes = np.packbits(uint8_mask).tobytes()
+                    mask_shape = bool_mask.shape
+                    masks_list.append({
+                        'data': mask_bytes,
+                        'shape': mask_shape
+                    })
+                    
+                self.logger.debug(f"Processed {len(masks_list)} masks")
+
+                # Convert scores and logits to lists for serialization
+                scores_list = scores.tolist()
+                logits_list = logits.tolist()
+
+                # Create message payload
+                message = {
+                    "frame": image,
+                    "masks_info": masks_list,
+                    "scores": scores_list,
+                    "logits": logits_list
+                }
+
+                self.logger.debug("Publishing segmentation results")
+                await self.message_broker.publish("SegmentationMessenger/segmentation_result", message)
+                await self.message_broker.publish("SegmentationMessenger/segmentation_complete", {"success": True})
+                
+            except Exception as e:
+                self.logger.error(f"Error in segmentation process: {str(e)}")
+                self.logger.error(f"Error details: {str(e)}")
+
+                # Log mask details for debugging
+                if 'masks' in locals():
+                    self.logger.error(f"Mask type: {type(masks)}, dtype: {masks.dtype}")
+                    self.logger.error(f"Mask shape: {masks.shape}")
+                raise e
+                
+        except Exception as e:
+            await self.message_broker.publish("SegmentationMessenger/segmentation_complete", {"success": False})
+
+            self.logger.error(f"Error handling message: {str(e)}")
+            raise e
+
+    async def stop(self):
+        self.message_broker.stop()
+
+
+
+async def main(enable_logging):
+    try:
+        setup_logging(enable_logging)
+
+        segmentation_model = SegmentationModel()
+
+        message_broker = MessageBroker(1024 * 2)
+        messenger = SegmentationMessenger(message_broker=message_broker, segmentation_model=segmentation_model)
+
+        await messenger.start()
+
+        # Keep the main coroutine running
+        while True:
+            await asyncio.sleep(1)
+
+    except Exception as e:
+        logging.error(f"Error starting message parser: {e}")
+
+    finally:
+        await messenger.stop()
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--enable-logging', action='store_true',
+                        help='Enable logging')
+    args = parser.parse_args()
+
+    asyncio.run(main(args.enable_logging))

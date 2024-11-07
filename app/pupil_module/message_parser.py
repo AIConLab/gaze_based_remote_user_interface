@@ -56,7 +56,7 @@ def setup_logging(enable_logging):
 
 class PupilMessageParser:
     def __init__(self, surface_name="Surface 1", pupil_ip='127.0.0.1', pupil_port=50020, message_broker: MessageBroker = None):
-        self.logger = logging.getLogger(__name__)
+        self.logger = logging.getLogger(self.__class__.__name__)
         self.surface_name = surface_name
         self.pupil_ip = pupil_ip
         self.pupil_port = pupil_port
