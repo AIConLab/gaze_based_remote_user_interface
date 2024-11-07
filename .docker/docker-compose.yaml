@@ -118,6 +118,20 @@ services:
     command: "python3 main.py" #--enable-logging"
 
 
+  visualizer:
+    build:
+      context: ..
+      dockerfile: .docker/Dockerfile.visualizer
+    volumes:
+      # Mount visualizer code (contains the visualization main.py)
+      - ../app/visualizer:/app
+      # Mount directories to analyze
+      - ../app/mission_manager:/src/mission_manager
+      - ../app/module_processor:/src/module_processor
+      - ../app/pupil_module:/src/pupil_module
+      - ../app/web_host:/src/web_host
+    command: "python3 main.py --src_dir /src --output /app/output/pubsub_graph --format png"
+
 networks:
   app_network:
     driver: bridge
