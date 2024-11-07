@@ -132,6 +132,25 @@ services:
       - ../app/web_host:/src/web_host
     command: "python3 main.py --src_dir /src --output /app/output/pubsub_graph --format png"
 
+  segmentation_module:
+    build:
+      context: .
+      dockerfile: Dockerfile.sam2
+    volumes:
+      - ../app/segmentation_module:/app
+      - ../app/app_shared_data:/app_shared_data
+    environment:
+      - PYTHONPATH=/app:/app_shared_data
+      - ZMQ_PUB_ADDRESS=tcp://zmq_proxy:5559
+      - ZMQ_SUB_ADDRESS=tcp://zmq_proxy:5560
+    ports:
+      - "5000:5000"
+    networks:
+      - app_network
+    depends_on:
+      - zmq_proxy
+    command: "python3 main.py" # --enable-logging"
+
 networks:
   app_network:
     driver: bridge

@@ -1,0 +1,59 @@
+FROM python:3.10-slim-bookworm
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender1 \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create and set working directory
+WORKDIR /app
+
+# Clone SAM2 repository
+RUN git clone https://github.com/facebookresearch/sam2.git && \
+    cd sam2
+
+# Install PyTorch CPU version and other dependencies
+RUN pip install --no-cache-dir \
+    torch==2.3.1+cpu \
+    torchvision==0.18.1+cpu \
+    --index-url https://download.pytorch.org/whl/cpu
+
+# Install SAM2
+WORKDIR /app/sam2
+RUN pip install -e .
+
+# Install common dependencies for computer vision
+RUN pip install --no-cache-dir \
+    opencv-python \
+    matplotlib \
+    numpy
+
+# Create directory for checkpoints
+RUN mkdir -p checkpoints
+
+# Set working directory for your application
+WORKDIR /app/sam2
+
+RUN apt-get update && apt-get install -y wget
+
+# Download model checkpoint (using the tiny model for CPU usage)
+RUN cd checkpoints && \
+    wget https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_tiny.pt
+
+
+WORKDIR /app
+
+COPY pip_requirements/sam2.txt /app/requirments.txt
+
+RUN pip install -r requirments.txt
+
+WORKDIR /app
