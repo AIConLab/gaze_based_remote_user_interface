@@ -217,7 +217,7 @@ class Backend:
             self.logger.error(f"Mission file creation failed")
 
     async def handle_teleop_twist_button_pressed(self, topic, message):
-        self.logger.info(f"Received teleop twist button pressed: {message}")
+        self.logger.debug(f"Received teleop twist button pressed: {message}")
 
         await self.message_broker.publish("Backend/teleop_twist_command", {"command": message['command']})
 

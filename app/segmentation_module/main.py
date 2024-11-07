@@ -109,6 +109,7 @@ class SegmentationModel:
             self.logger.error(f"Error getting masks: {e}")
             raise e  # Re-raise to ensure proper error handling upstream
 
+
 class SegmentationMessenger:
     def __init__(self, 
                  segmentation_model: SegmentationModel=None, 
@@ -135,33 +136,20 @@ class SegmentationMessenger:
             try:
                 masks, scores, logits = await self.segmentation_model.get_masks(image, input_point)
                 
-                # Convert masks to boolean type and serialize
+                # Convert masks to boolean type and serialize - process all masks
                 masks_list = []
                 for mask in masks:
-                    # Ensure mask is boolean type
-                    bool_mask = mask.astype(bool)
-                    # Convert to uint8 for packbits
-                    uint8_mask = bool_mask.astype(np.uint8)
-                    # Pack the bits
-                    mask_bytes = np.packbits(uint8_mask).tobytes()
-                    mask_shape = bool_mask.shape
-                    masks_list.append({
-                        'data': mask_bytes,
-                        'shape': mask_shape
-                    })
+                    mask_info = await self.encode_mask(mask)
+                    masks_list.append(mask_info)
                     
                 self.logger.debug(f"Processed {len(masks_list)} masks")
-
-                # Convert scores and logits to lists for serialization
-                scores_list = scores.tolist()
-                logits_list = logits.tolist()
 
                 # Create message payload
                 message = {
                     "frame": image,
                     "masks_info": masks_list,
-                    "scores": scores_list,
-                    "logits": logits_list
+                    "scores": scores.tolist(),
+                    "logits": logits.tolist()
                 }
 
                 self.logger.debug("Publishing segmentation results")
@@ -171,18 +159,28 @@ class SegmentationMessenger:
             except Exception as e:
                 self.logger.error(f"Error in segmentation process: {str(e)}")
                 self.logger.error(f"Error details: {str(e)}")
-
-                # Log mask details for debugging
-                if 'masks' in locals():
-                    self.logger.error(f"Mask type: {type(masks)}, dtype: {masks.dtype}")
-                    self.logger.error(f"Mask shape: {masks.shape}")
+                await self.message_broker.publish("SegmentationMessenger/segmentation_complete", {"success": False})
                 raise e
                 
         except Exception as e:
-            await self.message_broker.publish("SegmentationMessenger/segmentation_complete", {"success": False})
-
             self.logger.error(f"Error handling message: {str(e)}")
             raise e
+    
+    async def encode_mask(self, mask):
+        # Ensure mask is boolean type
+        bool_mask = mask.astype(bool)
+        # Convert to uint8 for packbits
+        uint8_mask = bool_mask.astype(np.uint8)
+        # Pack the bits
+        mask_bytes = np.packbits(uint8_mask).tobytes()
+        mask_shape = bool_mask.shape
+
+        mask_info = {
+            'data': mask_bytes,
+            'shape': mask_shape
+        }
+
+        return mask_info
 
     async def stop(self):
         self.message_broker.stop()

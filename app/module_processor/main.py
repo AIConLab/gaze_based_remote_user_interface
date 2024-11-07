@@ -94,10 +94,10 @@ class UserInteractionRenderer:
         await self.message_broker.subscribe("ModuleController/processing_mode_update", self.handle_processing_mode_update)
         await self.message_broker.subscribe("ModuleController/fixation_target", self.handle_fixation_target)
         await self.message_broker.subscribe("ModuleController/cycle_segmentation_result", self.handle_cycle_segmentation_result)
+        await self.message_broker.subscribe("ModuleController/segmentation_result_selected", self.handle_segmentation_result_selected)
 
         # ModuleDatapath subscriptions
         await self.message_broker.subscribe("ModuleDatapath/segmentation_results", self.handle_segmentation_results)
-
 
     async def handle_processing_mode_update(self, topic, message):
         self.logger.debug(f"Received processing mode update: {message}")
@@ -121,31 +121,46 @@ class UserInteractionRenderer:
             self.segmentation_results["frame"] = message["frame"]
             
             # Reconstruct masks from packed bytes
+            self.logger.debug(f"Processing {len(message['masks_info'])} masks")
             masks = []
             for mask_info in message["masks_info"]:
-                mask_bytes = mask_info['data']
-                mask_shape = mask_info['shape']
-                # Unpack the bytes back into uint8 array
-                mask_packed = np.frombuffer(mask_bytes, dtype=np.uint8)
-                mask_unpacked = np.unpackbits(mask_packed)
-                # Reshape and convert to boolean
-                mask = mask_unpacked[:np.prod(mask_shape)].reshape(mask_shape).astype(bool)
-                masks.append(mask)
+                try:
+                    mask_bytes = mask_info['data']
+                    mask_shape = mask_info['shape']
+                    # Unpack the bytes back into uint8 array
+                    mask_packed = np.frombuffer(mask_bytes, dtype=np.uint8)
+                    mask_unpacked = np.unpackbits(mask_packed)
+                    # Reshape and convert to boolean
+                    mask = mask_unpacked[:np.prod(mask_shape)].reshape(mask_shape).astype(bool)
+                    masks.append(mask)
+                except Exception as e:
+                    self.logger.error(f"Error processing individual mask: {str(e)}")
+                    self.logger.error(f"Mask info: {mask_info}")
+                    raise e
             
             self.segmentation_results["masks"] = np.array(masks)
             self.segmentation_results["scores"] = np.array(message["scores"])
             self.segmentation_results["logits"] = np.array(message["logits"])
 
-            self.logger.debug(f"Reconstructed {len(masks)} masks")
+            self.logger.debug(f"Successfully reconstructed {len(masks)} masks")
             await self.process_segmentation_results()
 
         except Exception as e:
             self.logger.error(f"Error handling segmentation results: {str(e)}")
-            self.logger.error(f"Message content: {message}")
+            self.logger.error(f"Message content: {message.keys()}")
             raise e
 
+    async def handle_segmentation_result_selected(self, topic, message):
+        self.logger.debug("Segmentation result selected")
 
+        # Publish the selected mask
+        frame = self.segmentation_results["frame"]
+        mask = self.segmentation_results["masks"][self.current_mask_index]
+        mask_info = await self.encode_mask(mask)
 
+        await self.message_broker.publish("UserInteractionRenderer/segmentation_selection", 
+                                        {"frame": frame, "mask": mask_info})
+    
     async def handle_cycle_segmentation_result(self, topic, message):
         self.logger.debug(f"Received cycle segmentation result: {message}")
 
@@ -271,12 +286,41 @@ class UserInteractionRenderer:
             
             raise ValueError("Invalid segmentation frame")
 
+    async def decode_masks(self, masks_info):
+        masks = []
+        for mask_info in masks_info:
+            mask_bytes = mask_info['data']
+            mask_shape = mask_info['shape']
+            # Unpack the bytes back into uint8 array
+            mask_packed = np.frombuffer(mask_bytes, dtype=np.uint8)
+            mask_unpacked = np.unpackbits(mask_packed)
+            # Reshape and convert to boolean
+            mask = mask_unpacked[:np.prod(mask_shape)].reshape(mask_shape).astype(bool)
+            masks.append(mask)
+        return masks
 
+    async def encode_mask(self, mask):
+        # Ensure mask is boolean type
+        bool_mask = mask.astype(bool)
+        # Convert to uint8 for packbits
+        uint8_mask = bool_mask.astype(np.uint8)
+        # Pack the bits
+        mask_bytes = np.packbits(uint8_mask).tobytes()
+        mask_shape = bool_mask.shape
 
+        mask_info = {
+            'data': mask_bytes,
+            'shape': mask_shape
+        }
+
+        return mask_info
+    
     def setup_loading_animation(self):
         """Creates a sequence of rotated loading frames"""
-        # Create base loading frame
-        base_frame = np.zeros((self.output_height, self.output_height, 3), dtype=np.uint8)
+        # Create base loading frame with correct dimensions (height, width)
+        base_frame = np.zeros((self.output_height, self.output_width, 3), dtype=np.uint8)
+        
+        # Calculate center based on frame dimensions
         center = (self.output_width // 2, self.output_height // 2)
         radius = min(self.output_width, self.output_height) // 8
         
@@ -292,11 +336,23 @@ class UserInteractionRenderer:
                 curr_end = curr_angle + 30
                 intensity = 255 - (j * (255 // self.loading_frame_count))
                 cv2.ellipse(frame, center, (radius, radius), 0, curr_angle, curr_end, 
-                           (intensity, intensity, intensity), thickness=3)
+                        (intensity, intensity, intensity), thickness=3)
 
-            # Add text
-            cv2.putText(frame, "Processing", (self.output_width//2 - 100, self.output_height//2 + 50), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+            # Add text centered below the loading circle
+            text = "Processing"
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            font_scale = 1
+            thickness = 2
+            
+            # Get text size
+            (text_width, text_height), baseline = cv2.getTextSize(text, font, font_scale, thickness)
+            
+            # Calculate text position to center it
+            text_x = (self.output_width - text_width) // 2
+            text_y = center[1] + radius + text_height + 20  # 20 pixels below the circle
+            
+            cv2.putText(frame, text, (text_x, text_y), 
+                        font, font_scale, (255, 255, 255), thickness)
 
             self.loading_frames.append(frame)
 
@@ -610,6 +666,9 @@ class ModuleController:
         # Segmentation subs
         await self.message_broker.subscribe("SegmentationMessenger/segmentation_complete", self.handle_segmentation_complete)
 
+        # User render subs
+        await self.message_broker.subscribe("UserInteractionRenderer/segmentation_selection", self.handle_segmentation_result_selected)
+
         # Video render subs
         await self.message_broker.subscribe("VideoRenderer/fixation_target", self.handle_fixation_target)
 
@@ -659,8 +718,7 @@ class ModuleController:
             self.logger.debug("Segmentation command sent")
 
         elif action == ProcessingModeActions.ACCEPT.name:
-            # TODO
-            pass
+            await self.message_broker.publish("ModuleController/segmentation_result_selected", {})
 
         elif action == ProcessingModeActions.CYCLE_LEFT.name:
             await self.message_broker.publish("ModuleController/cycle_segmentation_result", {"direction": "left"})
@@ -681,6 +739,12 @@ class ModuleController:
 
         # Pulish data to UserInteractionRenderer
         await self.message_broker.publish("ModuleController/fixation_target", message)
+
+    async def handle_segmentation_result_selected(self, topic, message):
+        self.logger.debug("Segmentation result selected")
+
+        # Go to default video rendering mode
+        await self.message_broker.publish("ModuleController/processing_mode_update", {"mode": ProcessingModes.VIDEO_RENDERING.name})
 
     async def stop(self):
         self.message_broker.stop()
