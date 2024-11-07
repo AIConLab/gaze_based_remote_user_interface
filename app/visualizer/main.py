@@ -71,7 +71,7 @@ class MessageBrokerVisualizer:
         # Create container clusters
         for container, classes in containers.items():
             with dot.subgraph(name=f'cluster_{container}') as c:
-                c.attr(label=container, style='rounded', bgcolor='lightgrey')
+                c.attr(label=container, style='rounded', bgcolor='none')
                 for class_name in classes:
                     c.node(f"{container}/{class_name}", class_name)
         
@@ -95,7 +95,7 @@ def main():
     parser = argparse.ArgumentParser(description='Generate pub/sub visualization')
     parser.add_argument('--src_dir', type=str, required=True, help='Source directory to analyze')
     parser.add_argument('--output', type=str, default='pubsub_visualization', help='Output file path (without extension)')
-    parser.add_argument('--format', type=str, default='png', choices=['png', 'pdf'], help='Output format')
+    parser.add_argument('--format', type=str, default='png', choices=['png', 'pdf', 'svg'], help='Output format')
     
     args = parser.parse_args()
     
