@@ -99,10 +99,10 @@ services:
       - PYTHONPATH=/app:/app_shared_data:/opt/ros/noetic/lib/python3/dist-packages
       - ZMQ_PUB_ADDRESS=tcp://localhost:5559
       - ZMQ_SUB_ADDRESS=tcp://localhost:5560
-      - ROBOT_IP=192.168.0.2
-      - ROBOT_HOSTNAME=cpr-utsan06
-      - ROS_MASTER_URI=http://192.168.0.2:11311
-      - PYTHONUNBUFFERED=1  # Add this to ensure Python output isn't buffered
+      - ROBOT_IP=${ROBOT_IP}
+      - ROBOT_HOSTNAME=${ROBOT_HOSTNAME}
+      - ROS_MASTER_URI=http://${ROBOT_IP}:11311
+      - PYTHONUNBUFFERED=1
     network_mode: "host"
     depends_on:
       - zmq_proxy

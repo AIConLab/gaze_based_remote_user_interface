@@ -85,6 +85,7 @@ add_service_files(\n\
   mission_commands.srv\n\
   mission_states.srv\n\
   mission_file_transfer.srv\n\
+  segmentation_file_transfer.srv\n\
 )\n\
 \n\
 generate_messages(\n\

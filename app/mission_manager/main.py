@@ -14,7 +14,12 @@ import rospy
 from rospy import ServiceProxy
 from sensor_msgs.msg import CompressedImage
 from std_msgs.msg import UInt8
-from ugv_mission_pkg.srv import mission_commands, mission_states, mission_file_transfer
+
+# Import custom ROS messages and services
+# Note the msgs and srvs must match the ones used in the ROS package
+# then must be built. This is already done in our dockerfile, but if you add 
+# new messages or services, you must rebuild container
+from ugv_mission_pkg.srv import mission_commands, mission_states, mission_file_transfer, segmentation_file_transfer
 from ugv_mission_pkg.msg import MissionWaypoint, GPS
 
 
@@ -116,6 +121,7 @@ class RosServiceHandler:
         # Store proxies to avoid recreating them for each call
         self.mission_command_proxy = ServiceProxy('mission_command', mission_commands)
         self.mission_state_proxy = ServiceProxy('mission_state_request', mission_states)
+        self.segmentation_transfer_proxy = ServiceProxy('segmentation_transfer', segmentation_file_transfer)
 
         self.mission_files_ready_flag = False
         self.mission_name = "mission_creation_test"
@@ -127,8 +133,12 @@ class RosServiceHandler:
             # Subscribe to messages that will trigger service calls
             self.logger.debug("Setting up subscriptions...")
             
+            # Backend sub
             await self.message_broker.subscribe("Backend/mission_command", self.handle_mission_command)
             await self.message_broker.subscribe("Backend/mission_state_request", self.handle_mission_state_request)
+            await self.message_broker.subscribe("Backend/segmentation_selection", self.handle_segmentation_selection)
+
+            # Mission File Handler sub
             await self.message_broker.subscribe("MissionFileHandler/mission_files_ready", self.handle_mission_files_ready)
 
 
@@ -260,6 +270,50 @@ class RosServiceHandler:
             self.logger.error(f"Failed to create service proxy: {str(e)}")
             return
 
+    async def handle_segmentation_selection(self, topic, message):
+        """Handle incoming segmentation data and send to ROS service"""
+        try:
+            self.logger.info("Handling segmentation selection")
+
+            frame = message["frame"]  # This is already compressed JPEG bytes
+            mask_info = message["mask"]  # This contains the encoded mask data
+
+            # Create service proxy for segmentation transfer
+            loop = asyncio.get_event_loop()
+            
+            request = segmentation_file_transfer._request_class()
+            
+            # Pack data into request
+            request.frame_data = frame  # Compressed JPEG bytes
+            request.mask_data = mask_info['data']  # Packed bits of mask
+            request.mask_shape = mask_info['shape']  # Shape as list/array
+            
+            # Call service
+            response = await loop.run_in_executor(
+                None,
+                lambda: self.segmentation_proxy(request)
+            )
+            
+            if not response.success:
+                self.logger.error(f"Segmentation transfer failed: {response.message}")
+                await self.message_broker.publish(
+                    "RosServiceHandler/segmentation_transfer_status",
+                    {"success": False, "message": response.message}
+                )
+            else:
+                self.logger.info("Segmentation transfer successful")
+                await self.message_broker.publish(
+                    "RosServiceHandler/segmentation_transfer_status",
+                    {"success": True}
+                )
+
+        except Exception as e:
+            self.logger.error(f"Error in segmentation selection handler: {str(e)}")
+            await self.message_broker.publish(
+                "RosServiceHandler/segmentation_transfer_status",
+                {"success": False, "message": str(e)}
+            )
+        
     async def stop(self):
         self.message_broker.stop()
 

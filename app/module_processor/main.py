@@ -68,8 +68,6 @@ class UserInteractionRenderer:
         self.current_mask_index = 0
         self.latest_rendered_segmentation_frames = None
 
-
-
         # Fixation data
         self.fixation_data = {"frame": None,
                               "x": None, 
@@ -160,7 +158,7 @@ class UserInteractionRenderer:
 
         await self.message_broker.publish("UserInteractionRenderer/segmentation_selection", 
                                         {"frame": frame, "mask": mask_info})
-    
+
     async def handle_cycle_segmentation_result(self, topic, message):
         self.logger.debug(f"Received cycle segmentation result: {message}")
 
@@ -524,9 +522,6 @@ class VideoRenderer:
                         # Create blank frame if not yet created
                         if blank_frame is None:
                             blank_frame = np.zeros((self.output_height, self.output_width, 3), np.uint8)
-                            cv2.putText(blank_frame, "Nothing to display", 
-                                    (self.output_width//2 - 100, self.output_height//2),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
 
                        # Publish blank frame 
                         frame_to_publish = blank_frame

@@ -1,0 +1,8 @@
+# Request
+bytes frame_data     # Compressed JPEG image
+bytes mask_data      # Packed binary mask data
+int32[] mask_shape   # Shape of the mask array [height, width]
+---
+# Response
+bool success        # Whether the transfer was successful
+string message      # Error message if not successful
