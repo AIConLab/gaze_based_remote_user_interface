@@ -275,25 +275,25 @@ class RosServiceHandler:
         try:
             self.logger.info("Handling segmentation selection")
 
-            frame = message["frame"]  # This is already compressed JPEG bytes
-            mask_info = message["mask"]  # This contains the encoded mask data
+            # Create the compressed image message
+            compressed_img = CompressedImage()
+            compressed_img.format = "jpeg"
+            compressed_img.data = message["frame"]  # Already JPEG compressed bytes
 
-            # Create service proxy for segmentation transfer
-            loop = asyncio.get_event_loop()
-            
+            mask_info = message["mask"]
+
             request = segmentation_file_transfer._request_class()
-            
-            # Pack data into request
-            request.frame_data = frame  # Compressed JPEG bytes
-            request.mask_data = mask_info['data']  # Packed bits of mask
-            request.mask_shape = mask_info['shape']  # Shape as list/array
-            
+            request.frame_data = compressed_img
+            request.mask_data = np.array(mask_info['data']).tobytes()  # Convert to bytes
+            request.mask_shape = list(mask_info['shape'])  # Convert tuple to list for ROS
+
             # Call service
+            loop = asyncio.get_event_loop()
             response = await loop.run_in_executor(
                 None,
                 lambda: self.segmentation_proxy(request)
             )
-            
+
             if not response.success:
                 self.logger.error(f"Segmentation transfer failed: {response.message}")
                 await self.message_broker.publish(
@@ -313,6 +313,7 @@ class RosServiceHandler:
                 "RosServiceHandler/segmentation_transfer_status",
                 {"success": False, "message": str(e)}
             )
+
         
     async def stop(self):
         self.message_broker.stop()

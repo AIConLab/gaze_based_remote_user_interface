@@ -1,7 +1,7 @@
 # Request
-bytes frame_data     # Compressed JPEG image
-bytes mask_data      # Packed binary mask data
-int32[] mask_shape   # Shape of the mask array [height, width]
+sensor_msgs/CompressedImage frame_data     # JPEG compressed image
+uint8[] mask_data                         # Packed binary mask data
+int32[] mask_shape                        # Shape of the mask array [height, width]
 ---
 # Response
 bool success        # Whether the transfer was successful

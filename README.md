@@ -10,22 +10,13 @@ Application used for demoing gaze based robot control interface
 
 ### Robot Network Configuration
 
-To ensure the container can connect to your robot, create a `.env` file in the root directory of this project with the following content:
+To ensure the container can connect to your robot, create a `.env` file in the [.docker](.docker) directory with the following content:
+
 ```
 ROBOT_IP=robot_ip
 ROBOT_HOSTNAME=robot_hostname
 ```
 
-The resulting directory structure should look like this:
-```
-.
-├── app
-├── .docker
-├── .env
-├── .git
-├── .gitignore
-└── README.md
-```
 
 If you have issues conecting to the robot, the following gist has some useful troubleshooting steps: [Simple script to setup your machine env to use a remote ROS master ](https://gist.github.com/chfritz/8c2adab45a94e091be77c55b0432ad2e?permalink_comment_id=3519694#gistcomment-3519694)
 
