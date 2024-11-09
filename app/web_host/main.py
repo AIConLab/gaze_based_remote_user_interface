@@ -7,95 +7,169 @@ from datetime import datetime
 from quart import Quart, render_template, request, jsonify, Response, make_response
 from quart_cors import cors
 import asyncio
-import cv2
 import numpy as np
+import hypercorn.asyncio
+import hypercorn.config
 
-from enum_definitions import MissionStates, MissionCommandSignals
+from enum_definitions import MissionStates, MissionCommandSignals, ProcessingModes, ProcessingModeActions
 from message_broker import MessageBroker
 
 from logging.handlers import RotatingFileHandler
 
+
 def setup_logging(enable_logging):
-    # Set up root logger
+    """Configure logging with explicit handler removal and stream sync"""
+    # Force flush on all handlers
+    import sys
+    sys.stdout.reconfigure(line_buffering=True)
+    sys.stderr.reconfigure(line_buffering=True)
+    
+    # Set base log level
+    base_level = logging.DEBUG if enable_logging else logging.INFO
+    
+    # Configure root logger first
     root_logger = logging.getLogger()
-    root_logger.setLevel(logging.DEBUG if enable_logging else logging.INFO)
+    root_logger.setLevel(base_level)
+    
+    # Clear any existing handlers from all loggers
+    loggers = [logging.getLogger(name) for name in logging.root.manager.loggerDict]
+    for logger in loggers + [root_logger]:
+        logger.handlers.clear()
+    
+    # Create formatters with more detailed information
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - [%(funcName)s:%(lineno)d] - %(message)s'
+    )
+    
+    # Create and configure stream handler with explicit buffering
+    stream_handler = logging.StreamHandler(sys.stdout)
+    stream_handler.setFormatter(formatter)
+    stream_handler.setLevel(base_level)
+    stream_handler.set_name('console_handler')  # Named handler for identification
+    root_logger.addHandler(stream_handler)
 
-    # Remove any existing handlers
-    for handler in root_logger.handlers[:]:
-        root_logger.removeHandler(handler)
-
-    # Create a StreamHandler for console output
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.DEBUG if enable_logging else logging.INFO)
-
-    # Create a formatter and set it for the console handler
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    console_handler.setFormatter(formatter)
-
-    # Add the console handler to the root logger
-    root_logger.addHandler(console_handler)
-
+    # Add file handler if logging is enabled
     if enable_logging:
-        # Set up file logging if enabled
         log_dir = "logs"
         os.makedirs(log_dir, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         log_file = os.path.join(log_dir, f"app_log_{timestamp}.log")
-
-        # Create a RotatingFileHandler
-        file_handler = RotatingFileHandler(log_file, maxBytes=10*1024*1024, backupCount=5)
-        file_handler.setLevel(logging.DEBUG)
+        
+        file_handler = logging.FileHandler(log_file, mode='a')
         file_handler.setFormatter(formatter)
-
-        # Add the file handler to the root logger
+        file_handler.setLevel(logging.DEBUG)
+        file_handler.set_name('file_handler')  # Named handler for identification
         root_logger.addHandler(file_handler)
 
-    # Configure Quart's logger
-    quart_logger = logging.getLogger('quart.app')
-    quart_logger.setLevel(logging.DEBUG if enable_logging else logging.INFO)
-    quart_logger.propagate = True
-
-    # Disable Quart's default access log
-    logging.getLogger('quart.serving').setLevel(logging.WARNING)
-
-    return root_logger
-
-
-    return root_logger
+    # Prevent ROS double logging but keep our logs
+    ros_logger = logging.getLogger('rosout')
+    ros_logger.propagate = False
+    ros_logger.addHandler(stream_handler)  # Ensure ROS logs still go to console
+    
+    # Configure specific loggers with explicit handlers
+    loggers_to_configure = [
+        'RosServiceHandler',
+        'RosSubHandler', 
+        'RosConnectionMonitor',
+        'MessageBroker'  # Add message broker logging
+    ]
+    
+    # Ensure each logger has the right configuration
+    for logger_name in loggers_to_configure:
+        logger = logging.getLogger(logger_name)
+        logger.setLevel(base_level)
+        logger.propagate = True  # Ensure propagation to root
+        # Clear and re-add handlers to ensure clean state
+        logger.handlers.clear()
+        
+    # Create a logger for the main module
+    main_logger = logging.getLogger(__name__)
+    main_logger.setLevel(base_level)
+    
+    # Log initial configuration to verify
+    main_logger.debug("Logging configuration completed")
+    main_logger.debug(f"Root logger level: {logging.getLevelName(root_logger.getEffectiveLevel())}")
+    main_logger.debug(f"Handler count: {len(root_logger.handlers)}")
+    
+    return main_logger
 
 
 class Backend:
     def __init__(self, message_broker: MessageBroker):
         self.message_broker = message_broker
 
+        self.processing_mode = None
         self.gaze_enabled_state = False
         self.mission_state = None
         self.robot_connected_state = False
-
         self.available_video_topics = []
 
-        self.logger = logging.getLogger(__name__)
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     async def start(self):
         self.logger.info("Backend started")
-     # Front end subscriptions
+        
+        # Front end subscriptions
         await self.message_broker.subscribe("Frontend/gaze_enabled_button_pressed", self.handle_gaze_enabled_button_pressed)
         await self.message_broker.subscribe("Frontend/mission_start_button_pressed", self.handle_mission_start_button_pressed)
         await self.message_broker.subscribe("Frontend/mission_pause_button_pressed", self.handle_mission_pause_button_pressed)
-        await self.message_broker.subscribe("Frontend/mission_stop_button_pressed", self.handle_mission_stop_button_pressed)
+        await self.message_broker.subscribe("Frontend/mission_abort_button_pressed", self.handle_mission_abort_button_pressed)
         await self.message_broker.subscribe("Frontend/video_topic_selected", self.handle_video_topic_selected)
+        await self.message_broker.subscribe("Frontend/mission_resume_button_pressed", self.handle_mission_resume_button_pressed)
+        await self.message_broker.subscribe("Frontend/teleop_twist_button_pressed", self.handle_teleop_twist_button_pressed)
+        await self.message_broker.subscribe("Frontend/make_mission_files", self.handle_make_mission_files)
+        await self.message_broker.subscribe("Frontend/process_action_button_pressed", self.handle_processing_mode_action)
+
+        """
+        Note: We are subscribing to the latest frame from both UI Renderer and Video Renderer as only one of them will be active at a time.
+
+        This is controlled by the Processing Mode in the ModuleProcessor.
+        """
+        # UI Renderer subscriptions
+        await self.message_broker.subscribe("UserInteractionRenderer/latest_rendered_frame", self.handle_latest_frame)
+        await self.message_broker.subscribe("UserInteractionRenderer/segmentation_selection", self.handle_segmentation_selection)
 
         # Video Renderer subscriptions
-        await self.message_broker.subscribe("VideoRender/latest_rendered_frame", self.handle_latest_frame_of_selected_topic)
+        await self.message_broker.subscribe("VideoRender/latest_rendered_frame", self.handle_latest_frame)
+
+        # ModuleController subscriptions
+        await self.message_broker.subscribe("ModuleController/processing_mode_update", self.handle_processing_mode_update)
 
         # ModuleDatapath subscriptions
         await self.message_broker.subscribe("ModuleDatapath/available_video_topics", self.handle_available_video_topics)
 
         # MissionManager subscriptions
-        await self.message_broker.subscribe("MissionManager/mission_state_update", self.handle_mission_state_update)
+        await self.message_broker.subscribe("RosConnectionMonitor/connection_status_update", self.handle_robot_connection_status_update)
+        await self.message_broker.subscribe("RosServiceHandler/current_state", self.handle_mission_state_update)
+        await self.message_broker.subscribe("RosSubHandler/mission_state_update", self.handle_mission_state_update)
+        await self.message_broker.subscribe("MissionFileHandler/mission_files_ready", self.handle_mission_files_ready)
+
+        # Initial publisher
+        # Loop until processing mode is set, this is in case Backend initializes before ModuleProcessor
+        asyncio.create_task(self.initialize_app_state())
+
+        # Initialize the robot mission state by requesting service
+        asyncio.create_task(self.request_mission_state())
+
+    async def initialize_app_state(self): 
+
+        while self.processing_mode is None:
+            # Send just name so string can be serialized
+            await self.message_broker.publish("Backend/processing_mode_action", {"action": ProcessingModeActions.CANCEL.name})
+
+            # Add delay to prevent flooding message
+            await asyncio.sleep(3)
+
+    async def request_mission_state(self):
+        self.logger.debug("Requesting mission state")
+
+        while self.mission_state is None:
+            await self.message_broker.publish("Backend/mission_state_request", {})
+
+            await asyncio.sleep(3)
 
     async def handle_gaze_enabled_button_pressed(self, topic, message):
-        self.logger.info("Gaze enabled button pressed")
+        self.logger.debug("Gaze enabled button pressed")
 
         self.gaze_enabled_state = not self.gaze_enabled_state
 
@@ -103,45 +177,23 @@ class Backend:
 
     async def handle_mission_start_button_pressed(self, topic, message):
         self.logger.debug("Mission start button pressed")
-        if not self.robot_connected_state or self.mission_state is None:
-            self.logger.warning(
-                "Attempted to stop mission without robot connection")
-            await self.message_broker.publish("Backend/error_banner", {"message": "Robot not connected or mission package not launched"})
-            return
 
-        if self.mission_state == MissionStates.IDLE:
-            # Publish mission start command
-            await self.message_broker.publish("MissionManager/mission_command", {"command": MissionCommandSignals.MISSION_START})
-
-        elif self.mission_state == MissionStates.PAUSED:
-            # Publish mission resume command
-            await self.message_broker.publish("MissionManager/mission_command", {"command": MissionCommandSignals.MISSION_RESUME})
+        await self.message_broker.publish("Backend/mission_command", {"command": MissionCommandSignals.MISSION_START.value})
 
     async def handle_mission_pause_button_pressed(self, topic, message):
         self.logger.debug("Mission pause button pressed")
-        if not self.robot_connected_state or self.mission_state is None:
-            self.logger.warning(
-                "Attempted to stop mission without robot connection")
-            await self.message_broker.publish("Backend/error_banner", {"message": "Robot not connected or mission package not launched"})
-            return
 
-        # Mission paused can be sent from any state except Aborted or Paused
-        if not self.mission_state == MissionStates.ABORTED and not self.mission_state == MissionStates.PAUSED:
+        await self.message_broker.publish("Backend/mission_command", {"command": MissionCommandSignals.MISSION_PAUSE.value})
 
-            # Publish mission pause command
-            await self.message_broker.publish("MissionManager/mission_command", {"command": MissionCommandSignals.MISSION_PAUSE})
+    async def handle_mission_abort_button_pressed(self, topic, message):
+        self.logger.debug("Mission abort button pressed")
 
-    async def handle_mission_stop_button_pressed(self, topic, message):
-        self.logger.debug("Mission stop button pressed")
-        if not self.robot_connected_state or self.mission_state is None:
-            self.logger.warning(
-                "Attempted to stop mission without robot connection")
+        await self.message_broker.publish("Backend/mission_command", {"command": MissionCommandSignals.MISSION_ABORT.value})
 
-            await self.message_broker.publish("Backend/error_banner", {"message": "Robot not connected or mission package not launched"})
+    async def handle_mission_resume_button_pressed(self, topic, message):
+        self.logger.debug("Mission resume button pressed")
 
-            return
-
-        await self.message_broker.publish("MissionManager/mission_command", {"command": MissionCommandSignals.MISSION_ABORT})
+        await self.message_broker.publish("Backend/mission_command", {"command": MissionCommandSignals.MISSION_RESUME.value})
 
     async def handle_video_topic_selected(self, topic, message):
         self.logger.debug(f"Received video topic selected: {message}")
@@ -151,22 +203,77 @@ class Backend:
             # Publish to ModuleController
             await self.message_broker.publish("Backend/selected_video_topic_update", {"topic": self.selected_video_topic})
 
-    async def handle_latest_frame_of_selected_topic(self, topic, message):
+    async def handle_make_mission_files(self, topic, message):
+        self.logger.debug(f"Received make mission files request: {message}")
+
+        await self.message_broker.publish("Backend/make_mission_files", {})
+
+    async def handle_mission_files_ready(self, topic, message):
+        self.logger.debug(f"Received mission files ready: {message}")
+        if message["success"]:
+            await self.message_broker.publish("Backend/mission_files_ready", message)
+        else:
+            self.logger.error(f"Mission file creation failed")
+
+    async def handle_teleop_twist_button_pressed(self, topic, message):
+        self.logger.debug(f"Received teleop twist button pressed: {message}")
+
+        await self.message_broker.publish("Backend/teleop_twist_command", {"command": message['command']})
+
+    async def handle_latest_frame(self, topic, message):
         frame = message['frame']
 
-        await self.message_broker.publish("Backend/selected_topic_latest_frame", {"frame": frame})
+        await self.message_broker.publish("Backend/latest_frame", {"frame": frame})
 
     async def handle_available_video_topics(self, topic, message):
-
         if 'topics' in message:
             self.available_video_topics = message['topics']
             await self.message_broker.publish("Backend/available_video_topics_update", {"topics": self.available_video_topics})
 
+    async def handle_processing_mode_update(self, topic, message):
+        
+        self.processing_mode = message['mode']
+
+        await self.message_broker.publish("Backend/processing_mode_update", {"mode": self.processing_mode})
+        
+        self.logger.debug(f"Backend: Processing mode updated: {self.processing_mode}")
+
+    async def handle_processing_mode_action(self, topic, message):
+        action = message['action']
+
+        await self.message_broker.publish("Backend/processing_mode_action", {"action": action})
+
+        self.logger.debug(f"Backend: Processing mode action: {action}")
+
+    async def handle_robot_connection_status_update(self, topic, message):
+        self.logger.debug(f"Received robot connection status update: {message}")
+
+        if message['connected'] != self.robot_connected_state:
+            self.robot_connected_state = message['connected']
+
+            await self.message_broker.publish("Backend/robot_connection_status", {"connected": self.robot_connected_state})
+
     async def handle_mission_state_update(self, topic, message):
-        if 'state' in message:
-            self.mission_state = message['state']
-            await self.message_broker.publish("Backend/mission_state_update", {"mission_state": self.mission_state})
-    
+        # Incoming message state is a string already
+        self.logger.info(f"Received mission state update: {message}")
+        self.mission_state = message['state']
+
+        await self.message_broker.publish("Backend/mission_state_update", {"mission_state": self.mission_state})
+
+    async def handle_segmentation_selection(self, topic, message):
+        self.logger.debug("Received segmentation selection")
+        """
+        Incoming message: {"frame", "mask"}
+            frame = self.segmentation_results["frame"]
+            mask = self.segmentation_results["masks"][self.current_mask_index]
+            mask_info = await self.encode_mask(mask)
+        """
+
+        # Handle and pass the message to mission manager
+        await self.message_broker.publish("Backend/segmentation_selection", message)
+
+
+
     async def stop(self):
         self.logger.info("Backend stopping")
         self.message_broker.stop()
@@ -180,14 +287,18 @@ class Frontend:
         self.frame_lock = asyncio.Lock()
         self.frame_available = asyncio.Event()
         self.state = {}
-        self.logger = logging.getLogger(__name__)
-
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     async def start(self):
         self.logger.info("Frontend started")
+
+        # Backend subscriptions
         await self.message_broker.subscribe("Backend/mission_state_update", self.handle_mission_state_update)
         await self.message_broker.subscribe("Backend/available_video_topics_update", self.handle_available_video_topics)
-        await self.message_broker.subscribe("Backend/selected_topic_latest_frame", self.handle_video_frame)
+        await self.message_broker.subscribe("Backend/latest_frame", self.handle_video_frame)
+        await self.message_broker.subscribe("Backend/processing_mode_update", self.handle_processing_mode_update)
+        await self.message_broker.subscribe("Backend/robot_connection_status", self.handle_robot_connection_status)
+        await self.message_broker.subscribe("Backend/mission_files_ready", self.handle_mission_files_ready)
 
     async def index(self):
         return await render_template('index.html', **self.state)
@@ -215,9 +326,39 @@ class Frontend:
         except Exception as e:
             self.logger.error(f"Error handling video frame: {str(e)}")
 
-    async def video_feed(self):
-        self.logger.info("Video feed requested")
+    async def handle_mission_state_update(self, topic, message):
+        if 'mission_state' in message:
+            self.state['mission_state'] = message['mission_state']
 
+    async def handle_mission_files_ready(self, topic, message):
+        """Handle mission files ready message from backend"""
+        self.logger.info(f"Received mission files ready")
+        # Extract waypoint data from the mission data
+        waypoints = []
+        for i, wp_data in enumerate(message['mission_data']):
+            waypoint = {
+                'index': i,
+                'has_image': 'image_data' in wp_data
+            }
+            waypoints.append(waypoint)
+        
+        # Update state with waypoint data
+        self.state['mission_files'] = waypoints
+
+        self.logger.debug(f"Updated mission files state: {self.state['mission_files']}")
+
+    async def handle_available_video_topics(self, topic, message):
+        if 'topics' in message:
+            self.state['available_video_topics'] = message['topics']
+
+    async def handle_processing_mode_update(self, topic, message):
+        # Processing mode message is a string
+        mode = message['mode']
+
+        self.state['processing_mode'] = mode
+        self.logger.debug(f"Frontend: Processing mode updated: {mode}")
+
+    async def video_feed(self):
         async def generate():
             while True:
                 try:
@@ -259,49 +400,101 @@ class Frontend:
         try:
             if "gaze_button_pressed" in form:
                 await self.publish_message("Frontend/gaze_enabled_button_pressed", {'type': 'gaze_enabled_button_pressed'})
+
+            elif "mission_resume_button_pressed" in form:
+                await self.publish_message("Frontend/mission_resume_button_pressed", {'type': 'mission_resume_button_pressed'})
+
             elif "mission_start_button_pressed" in form:
                 await self.publish_message("Frontend/mission_start_button_pressed", {'type': 'mission_start_button_pressed'})
+
             elif "mission_pause_button_pressed" in form:
                 await self.publish_message("Frontend/mission_pause_button_pressed", {'type': 'mission_pause_button_pressed'})
-            elif "mission_stop_button_pressed" in form:
-                await self.publish_message("Frontend/mission_stop_button_pressed", {'type': 'mission_stop_button_pressed'})
+
+            elif "mission_abort_button_pressed" in form:
+                await self.publish_message("Frontend/mission_abort_button_pressed", {'type': 'mission_abort_button_pressed'})
+
             elif "video_topic_selected" in form:
                 selected_topic = form.get("video_topic_selected")
-                self.logger.debug(f"Video topic selected: {selected_topic}")
                 await self.publish_message("Frontend/video_topic_selected", {'topic': selected_topic})
+
+            elif "process_action_button_pressed" in form:
+                action = form.get("process_action_button_pressed")  # Match exactly
+                action_enum = ProcessingModeActions[action]
+                await self.publish_message(
+                    "Frontend/process_action_button_pressed", 
+                    {'action': action_enum.name}
+                )
+
+            elif "teleop_toggle_pressed" in form:
+                # Dont need to do anything for now since this button just cause the teleop control to disapear from the front end ui
+                pass
+
+            elif "teleop_button_pressed" in form:
+                button_id = form.get("teleop_button_pressed")
+                # Map button IDs to movement commands [x, y, z, angular]
+                teleop_commands = {
+                    'teleop-forward': [1, 0, 0, 0],      # Forward
+                    'teleop-forward-right': [1, 0, 0, -1],  # Forward-Right
+                    'teleop-right': [0, 0, 0, -1],       # Right
+                    'teleop-back-right': [-1, 0, 0, -1], # Back-Right
+                    'teleop-back': [-1, 0, 0, 0],        # Back
+                    'teleop-back-left': [-1, 0, 0, 1],   # Back-Left
+                    'teleop-left': [0, 0, 0, 1],         # Left
+                    'teleop-forward-left': [1, 0, 0, 1], # Forward-Left
+                    'teleop-stop': [0, 0, 0, 0],         # Stop
+                }
+                
+                command = teleop_commands.get(button_id, [0, 0, 0, 0])  # Default to stop if unknown button
+                await self.publish_message("Frontend/teleop_twist_button_pressed", {'command': command})
+
+            elif "make_mission_files_button_pressed" in form:
+                await self.publish_message("Frontend/make_mission_files", {'type': 'make_mission_files'})
 
             else:
                 self.logger.warning(f"Unknown POST request: {form}")
+
         except Exception as e:
             self.logger.error(f"Error handling POST request: {str(e)}")
 
-    async def handle_mission_state_update(self, topic, message):
-        if 'mission_state' in message:
-            self.state['mission_state'] = message['mission_state']
+    async def handle_robot_connection_status(self, topic, message):
+        self.state['robot_connected'] = message['connected']
 
-    async def handle_available_video_topics(self, topic, message):
-        if 'topics' in message:
-            self.state['available_video_topics'] = message['topics']
+    async def stop(self):
+        self.logger.info("Frontend stopping")
+        self.message_broker.stop()
 
 
 class WebHost:
     def __init__(self, ip: str, port: int):
         self.ip = ip
         self.port = port
-        self.front_end_message_broker = MessageBroker(1024)
+        self.frontend_message_broker = MessageBroker(1024)
         self.backend_message_broker = MessageBroker(1024)
 
         self.backend = Backend(self.backend_message_broker)
-        self.frontend = Frontend(self.front_end_message_broker)
-        self.app = Quart(__name__)
+        self.frontend = Frontend(self.frontend_message_broker)
+        
+        # Create Quart app with logging disabled
+        self.app = Quart(self.__class__.__name__)
+        self.app.logger.setLevel(logging.WARNING)  # Set main app logger to WARNING
+        
+        # Disable all Quart loggers
+        logging.getLogger('quart').setLevel(logging.WARNING)
+        logging.getLogger('quart.app').disabled = True
+        logging.getLogger('quart.serving').disabled = True
+        
+        # Disable access log completely
+        self.app.config['LOGGER_HANDLER_POLICY'] = 'never'
+        self.app.config['LOGGER_NAME'] = None
+        
         self.app = cors(self.app)
-        self.logger = logging.getLogger(__name__)
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     async def start(self):
         self.logger.info("Web host starting")
-        await self.backend.start()
         await self.frontend.start()
         self.setup_routes()
+        await self.backend.start()
 
     def setup_routes(self):
         self.app.route('/')(self.frontend.index)
@@ -313,7 +506,7 @@ class WebHost:
         self.app.run(host=self.ip, port=self.port, debug=False, use_reloader=False)
 
     def stop(self):
-        self.front_end.stop()
+        self.frontend.stop()
         self.backend.stop()
 
 
@@ -326,13 +519,18 @@ async def main(enable_logging):
     await web_host.start()
 
     try:
-        await web_host.app.run_task(host=web_host.ip, port=web_host.port)
+        config = hypercorn.Config()
+        config.bind = [f"{web_host.ip}:{web_host.port}"]
+        config.access_log_format = ""  # Disable access logs
+        config.accesslog = None
+        config.errorlog = None
+        
+        await hypercorn.asyncio.serve(web_host.app, config)
 
     except KeyboardInterrupt:
         logger.info("Shutting down...")
     finally:
         await web_host.stop()
-
 
 
 if __name__ == '__main__':

@@ -11,32 +11,86 @@
         <div class="sidebar">
             <div class="section">
                 <h2>Robot connection status</h2>
-                <p>Status: <span id="connection-status">{% if robot_connected_state %}Connected{% else %}Disconnected{% endif %}</span></p>
+                <p>Status: <span id="connection-status">{% if robot_connected %}Connected{% else %}Disconnected{% endif %}</span></p>
+
+                <h2>Current Mission State</h2>
+                <p>State: <span id="mission-state">{{ mission_state }}</span></p>
             </div>
             <div class="section">
                 <h2>Mission Control</h2>
                 <button id="mission-start">Mission Start</button>
                 <button id="mission-pause">Mission Pause</button>
-                <button id="mission-stop">Mission Stop</button>
+                <button id="mission-resume">Mission Resume</button>
+                <button id="mission-abort">Mission Abort</button>
             </div>
+
             <div class="section">
-                <h2>Mission files</h2>
-                <!-- Add mission files content here -->
+                <h2>Mission Files</h2>
+                <button id="make-mission-files">Make Mission Files</button>
+                <div class="file-tree">
+                    <div class="file-tree-empty">
+                        No files loaded. Try clicking the "Make Mission Files" button...
+                    </div>
+                </div>
             </div>
+
+            <div class = "section">
+                <button id="teleop-toggle" class="teleop-toggle">Enable Teleop</button>
+                <div class="teleop-controls hidden">
+                    <div class="teleop-pad">
+                        <button id="teleop-forward-left" class="teleop-btn">↖</button>
+                        <button id="teleop-forward" class="teleop-btn">↑</button>
+                        <button id="teleop-forward-right" class="teleop-btn">↗</button>
+                        <button id="teleop-left" class="teleop-btn">←</button>
+                        <button id="teleop-stop" class="teleop-btn">■</button>
+                        <button id="teleop-right" class="teleop-btn">→</button>
+                        <button id="teleop-back-left" class="teleop-btn">↙</button>
+                        <button id="teleop-back" class="teleop-btn">↓</button>
+                        <button id="teleop-back-right" class="teleop-btn">↘</button>
+                    </div>
+                </div>
+            </div>
+
         </div>
         <div class="main-content">
             <div class="controls">
-                <select id="video-topics">
-                    <option value="">Select Video Topic</option>
-                    {% for topic in available_video_topics %}
-                    <option value="{{ topic }}">{{ topic }}</option>
-                    {% endfor %}
-                </select>
-                <button id="gaze-toggle">{% if gaze_enabled_state %}Disable{% else %}Enable{% endif %} Gaze</button>
+
+                <div class="left-controls">
+                    <select id="video-topics">
+                        <option>Select Video Topic</option>
+                        {% for topic in available_video_topics %}
+                            <option value="{{ topic }}">{{ topic }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="interface-banner">
+                    {% if processing_mode %}
+                        {% if processing_mode == 'INITIAL_FIXATION' %}
+                            <button id="segment-button">Segment</button>
+                            <button id="cancel-button">Cancel</button>
+                        {% elif processing_mode == 'SEGMENTATION_RESULTS' %}
+                            <button id="cycle-left-button">←</button>
+                            <button id="cycle-right-button">→</button>
+                            <button id="accept-button">Accept</button>
+                            <button id="cancel-button">Cancel</button>
+                        {% else %}
+
+                        {% endif %}
+                    {% endif %}
+                </div>
+
+                <div class="right-controls">
+                    <button id="gaze-toggle">
+                        {% if gaze_enabled_state %}Disable{% else %}Enable{% endif %} Gaze
+                    </button>
+                </div>
             </div>
+
             <div id="workspace">
                 <img id="video-feed" alt="Video Feed">
             </div>
+
         </div>
     </div>
     <script src="{{ url_for('static', filename='event_handler.js') }}"></script>

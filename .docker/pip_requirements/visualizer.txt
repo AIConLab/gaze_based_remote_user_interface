@@ -1,0 +1,3 @@
+graphviz==0.20.1  # Python package for creating visualizations
+typing-extensions>=4.5.0  # For better type hinting support
+astroid>=2.15.6  # For better Python parsing capabilities

@@ -1,0 +1,5 @@
+msgpack
+numpy
+opencv-python
+pillow
+pyzmq

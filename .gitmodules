@@ -1,3 +1,0 @@
-[submodule "pupil_docker"]
-	path = pupil_docker
-	url = git@github.com:AIConLab/pupil_docker.git
