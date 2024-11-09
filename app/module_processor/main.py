@@ -1,13 +1,12 @@
 import asyncio
 import numpy as np
-import zmq
 import zmq.asyncio
-import msgpack
 import cv2
 import logging
 import os
 import argparse
 from datetime import datetime
+import time
 
 from message_broker import MessageBroker
 from utilities import AprilTagRenderer
@@ -424,6 +423,7 @@ class VideoRenderer:
                   output_width=1280, 
                   output_height=720, 
                   max_queue_size=5,
+                  gaze_trail_length=30,
                   message_broker: MessageBroker = None
                   ):
         # Init classes
@@ -461,9 +461,20 @@ class VideoRenderer:
         self.gaze_lock = asyncio.Lock()
         self.gaze_queue = asyncio.Queue(maxsize=max_queue_size)
 
-         # Add a new attribute to store the latest frame
         self.latest_frame = None
         self.latest_frame_lock = asyncio.Lock()
+
+
+        # Gaze visualization parameters
+        self.render_gaze = False
+
+        self.gaze_trail_length = gaze_trail_length
+        self.gaze_points = []  # List of (timestamp, x, y, alpha) tuples
+        self.gaze_fade_duration = 1  # seconds
+        self.gaze_point_size = 10
+        self.gaze_color = (0, 255, 0)  # Green color for gaze
+        self.last_gaze_cleanup = 0
+        self.gaze_cleanup_interval = 0.5  # seconds
         
         self.logger = logging.getLogger(self.__class__.__name__)
 
@@ -482,7 +493,7 @@ class VideoRenderer:
         
         # ModuleController subscriptions
         await self.message_broker.subscribe("ModuleController/selected_video_topic_update", self.handle_topic_update)
-        await self.message_broker.subscribe("ModuleController/render_apriltags", self.handle_render_apriltags)
+        await self.message_broker.subscribe("ModuleController/gaze_enabled_state_update", self.handle_gaze_enabled_state_update)
         await self.message_broker.subscribe("ModuleController/processing_mode_update", self.handle_processing_mode_update)
 
     async def handle_selected_topic_latest_frame(self, topic, message):
@@ -531,11 +542,17 @@ class VideoRenderer:
                     await asyncio.sleep(0.1)  # Small delay for synchronization
                     self.topic_change_event.clear()  # Clear topic change flag
 
-    async def handle_render_apriltags(self, topic, message):
-        self.logger.debug(f"Received render_apriltags message: {message}")
-
-        # Update render_apriltags flag, default to False if message is invalid
-        self.render_apriltags = message.get("render_apriltags", False)
+    async def handle_gaze_enabled_state_update(self, topic, message):
+        self.logger.debug(f"Received gaze enabled state update: {message}")
+        gaze_enabled = message.get("gaze_enabled", False)
+        
+        # Update both rendering flags
+        self.render_apriltags = gaze_enabled
+        self.render_gaze = gaze_enabled
+        
+        if not gaze_enabled:
+            # Clear gaze points when disabled
+            self.gaze_points = []
 
     async def handle_processing_mode_update(self, topic, message):
         self.logger.debug(f"Received processing mode update: {message}")
@@ -543,14 +560,30 @@ class VideoRenderer:
         self.processing_mode = message.get("mode", None)
 
     async def handle_gaze_data(self, topic, message):
-        self.logger.debug(f"Received gaze data: {message}")
+        if not self.render_gaze:
+            return
+            
+        try:
+            timestamp = message.get("timestamp", time.time())
+            gaze_x = message.get("x", 0)
+            gaze_y = message.get("y", 0)
+            
+            # Convert normalized gaze coordinates to pixel coordinates
+            async with self.latest_frame_lock:
+                if self.latest_frame is not None:
+                    h, w = self.latest_frame.shape[:2]
+                    pixel_x = int(gaze_x * w)
+                    pixel_y = int((1 - gaze_y) * h)  # Flip Y coordinate
+                    
+                    # Add new gaze point with full opacity
+                    self.gaze_points.append((timestamp, pixel_x, pixel_y, 1.0))
+                    
+                    # Maintain fixed buffer size
+                    if len(self.gaze_points) > self.gaze_trail_length:
+                        self.gaze_points.pop(0)
 
-        # Add gaze data to queue
-        async with self.gaze_lock:
-            try:
-                self.gaze_queue.put_nowait(message)
-            except asyncio.QueueFull:
-                self.gaze_queue.get_nowait()
+        except Exception as e:
+            self.logger.error(f"Error handling gaze data: {str(e)}")
 
     async def handle_fixation_data(self, topic, message):
         self.logger.debug(f"Received fixation data: {message}")
@@ -615,17 +648,42 @@ class VideoRenderer:
             raise e
 
     async def process_frame(self, frame):
-        """Process frame with AprilTags if enabled"""
+        """Process frame with AprilTags and gaze visualization if enabled"""
         if frame is None:
             return frame
             
-        if self.render_apriltags:
-            # Set frame in apriltag renderer
-            self.apriltag_renderer.set_latest_frame(frame)
-            # Get processed frame with overlays
-            return self.apriltag_renderer.get_latest_frame()
+        # Create a copy of the frame for modification
+        processed_frame = frame.copy()
+        
+        # Draw gaze trail if enabled and we have points
+        if self.render_gaze and self.gaze_points:
+            await self.cleanup_gaze_points()  # Regularly cleanup old points
+            
+            # Create a separate overlay for all gaze points
+            overlay = np.zeros_like(processed_frame, dtype=np.uint8)
+            
+            # Draw all points on the overlay
+            for timestamp, x, y, alpha in self.gaze_points:
+                # Draw the gaze point
+                cv2.circle(overlay, (x, y), 
+                          self.gaze_point_size, 
+                          self.gaze_color, 
+                          -1)  # Filled circle
+                
+                # Draw a connecting line to the previous point if it exists
+                if len(self.gaze_points) > 1:
+                    points = np.array([[p[1], p[2]] for p in self.gaze_points], np.int32)
+                    cv2.polylines(overlay, [points], False, self.gaze_color, 2)
+            
+            # Apply the overlay with transparency
+            cv2.addWeighted(processed_frame, 1, overlay, 0.6, 0, processed_frame)
 
-        return frame
+        # Apply AprilTags if enabled
+        if self.render_apriltags:
+            self.apriltag_renderer.set_latest_frame(processed_frame)
+            processed_frame = self.apriltag_renderer.get_latest_frame()
+
+        return processed_frame
 
     async def syncronize_fixation_and_frame(self):
         """Synchronize the latest frame with fixation data"""
@@ -670,6 +728,18 @@ class VideoRenderer:
         except Exception as e:
             self.logger.error(f"Error in synchronize_fixation_and_frame: {str(e)}")
 
+    async def cleanup_gaze_points(self):
+        """Cleanup old gaze points based on timestamp"""
+        current_time = time.time()
+        
+        if current_time - self.last_gaze_cleanup > self.gaze_cleanup_interval:
+            # Remove points older than fade duration
+            self.gaze_points = [
+                (ts, x, y, 1.0 - (current_time - ts) / self.gaze_fade_duration)
+                for ts, x, y, _ in self.gaze_points
+                if current_time - ts < self.gaze_fade_duration
+            ]
+            self.last_gaze_cleanup = current_time
     def frame_reshape(self, frame):
         h, w = frame.shape[:2]
         aspect = w/h
@@ -750,7 +820,7 @@ class ModuleController:
         self.gaze_enabled = message["gaze_enabled"]
 
         # Publish render_apriltags msg
-        await self.message_broker.publish("ModuleController/render_apriltags", {"render_apriltags": self.gaze_enabled})
+        await self.message_broker.publish("ModuleController/gaze_enabled_state_update", {"gaze_enabled": self.gaze_enabled})
 
     async def handle_processing_mode_action(self, topic, message):
         action = message.get("action", None)
@@ -992,7 +1062,8 @@ async def main(enable_logging):
         video_renderer = VideoRenderer(video_fps=30, 
                                 message_broker=video_renderer_message_broker,
                                 output_width=1280, 
-                                output_height=720)
+                                output_height=720,
+                                gaze_trail_length=30)
 
         module_controller = ModuleController(message_broker=module_controller_message_broker)
 

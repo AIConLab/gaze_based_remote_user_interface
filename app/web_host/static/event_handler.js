@@ -205,7 +205,6 @@ document.addEventListener('DOMContentLoaded', function() {
             const content = {
                 'INITIAL_FIXATION': `
                     <button id="segment-button">Segment</button>
-                    <button id="make-waypoint-button">Make Waypoint</button>
                     <button id="cancel-button">Cancel</button>
                 `,
                 'SEGMENTATION_RESULTS': `
