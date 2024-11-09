@@ -62,20 +62,20 @@ class UserInteractionRenderer:
 
         # Segmentation results data structure
         self.segmentation_results = {"frame" : None,
-                                     "masks" : []}
+                                    "masks" : [],
+                                    "scores" : [],
+                                    "logits" : [],
+                                    "point" : None,
+                                    "normalized_point" : None}
         self.current_mask_index = 0
-        self.latest_rendered_segmentation_frames = []
-
-
-        # OCR results data structure
-        self.ocr_results = {"longitude" : None, 
-                            "latitude" : None}
-        self.latest_rendered_ocr_frame = None
+        self.latest_rendered_segmentation_frames = None
 
         # Fixation data
         self.fixation_data = {"frame": None,
                               "x": None, 
-                              "y": None}
+                              "y": None,
+                                "norm_x": None,
+                                "norm_y": None}
         self.latest_rendered_fixation_frame = None
 
         # Loading animation setup
@@ -84,7 +84,7 @@ class UserInteractionRenderer:
         self.loading_frame_count = 8  # Number of rotation steps
         self.setup_loading_animation()
 
-        self.logger = logging.getLogger(__name__)
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     async def start(self):
         self.logger.info("UserInteractionRenderer started")
@@ -95,9 +95,11 @@ class UserInteractionRenderer:
         # ModuleController subscriptions
         await self.message_broker.subscribe("ModuleController/processing_mode_update", self.handle_processing_mode_update)
         await self.message_broker.subscribe("ModuleController/fixation_target", self.handle_fixation_target)
-        await self.message_broker.subscribe("ModuleController/segmentation_results", self.handle_segmentation_results)
-        await self.message_broker.subscribe("ModuleController/ocr_results", self.handle_ocr_results)
         await self.message_broker.subscribe("ModuleController/cycle_segmentation_result", self.handle_cycle_segmentation_result)
+        await self.message_broker.subscribe("ModuleController/segmentation_result_selected", self.handle_segmentation_result_selected)
+
+        # ModuleDatapath subscriptions
+        await self.message_broker.subscribe("ModuleDatapath/segmentation_results", self.handle_segmentation_results)
 
     async def handle_processing_mode_update(self, topic, message):
         self.logger.debug(f"Received processing mode update: {message}")
@@ -105,30 +107,101 @@ class UserInteractionRenderer:
         self.processing_mode = message.get("mode", None)
 
     async def handle_fixation_target(self, topic, message): 
-        self.logger.debug(f"Received fixation target: {message}")
+        self.logger.debug(f"Received fixation target with point")
 
         self.fixation_data["frame"] = message.get("frame", None)
         self.fixation_data["x"] = message.get("point", {}).get("x", None)
         self.fixation_data["y"] = message.get("point", {}).get("y", None)
+        self.fixation_data["norm_x"] = message.get("normalized_point", {}).get("x", None)
+        self.fixation_data["norm_y"] = message.get("normalized_point", {}).get("y", None)
+
+        # DEBUG:
+        self.logger.info(f"Received fixation target at ({self.fixation_data['x']}, {self.fixation_data['y']}, {self.fixation_data['norm_x']}, {self.fixation_data['norm_y']})")
 
         await self.process_fixation_frame()
 
     async def handle_segmentation_results(self, topic, message):
-        self.logger.debug(f"Received segmentation results: {message}")
+        try:
+            self.logger.debug(f"Received segmentation results")
+            
+            # Store the frame
+            self.segmentation_results["frame"] = message["frame"]
+            
+            # Reconstruct masks from packed bytes
+            self.logger.debug(f"Processing {len(message['masks_info'])} masks")
+            masks = []
+            for mask_info in message["masks_info"]:
+                try:
+                    mask_bytes = mask_info['data']
+                    mask_shape = mask_info['shape']
+                    # Unpack the bytes back into uint8 array
+                    mask_packed = np.frombuffer(mask_bytes, dtype=np.uint8)
+                    mask_unpacked = np.unpackbits(mask_packed)
+                    # Reshape and convert to boolean
+                    mask = mask_unpacked[:np.prod(mask_shape)].reshape(mask_shape).astype(bool)
+                    masks.append(mask)
+                except Exception as e:
+                    self.logger.error(f"Error processing individual mask: {str(e)}")
+                    self.logger.error(f"Mask info: {mask_info}")
+                    raise e
+            
+            self.segmentation_results["masks"] = np.array(masks)
+            self.segmentation_results["scores"] = np.array(message["scores"])
+            self.segmentation_results["logits"] = np.array(message["logits"])
 
-        self.segmentation_results["frame"] = message.get("frame", None)
+            # Store points as dictionaries with x,y keys
+            point = message["point"]
+            normalized_point = message["normalized_point"]
+            
+            # Ensure points are in dict format with x,y keys
+            if isinstance(point, (list, tuple)):
+                point = {"x": point[0], "y": point[1]}
+            if isinstance(normalized_point, (list, tuple)):
+                normalized_point = {"x": normalized_point[0], "y": normalized_point[1]}
 
-        self.segmentation_results["masks"] = message.get("masks", [])
+            self.segmentation_results["point"] = point
+            self.segmentation_results["normalized_point"] = normalized_point
 
-        await self.process_segmentation_results()
+            self.logger.debug(f"Successfully reconstructed {len(masks)} masks")
+            await self.process_segmentation_results()
 
-    async def handle_ocr_results(self, topic, message):
-        self.logger.debug(f"Received OCR results: {message}")
+        except Exception as e:
+            self.logger.error(f"Error handling segmentation results: {str(e)}")
+            self.logger.error(f"Message content: {message.keys()}")
+            raise e
 
-        self.ocr_results["longitude"] = message.get("longitude", None)
-        self.ocr_results["latitude"] = message.get("latitude", None)
+    async def handle_segmentation_result_selected(self, topic, message):
+        self.logger.debug("Segmentation result selected")
 
-        await self.process_ocr_results()
+        try:
+            # Get the selected mask
+            frame = self.segmentation_results["frame"]
+            mask = self.segmentation_results["masks"][self.current_mask_index]
+            mask_info = await self.encode_mask(mask)
+
+            # Get points - ensure they're in dict format
+            point = self.segmentation_results["point"]
+            normalized_point = self.segmentation_results["normalized_point"]
+
+            # Debug log the point data
+            self.logger.debug(f"Point data being sent: {point}")
+            self.logger.debug(f"Normalized point data being sent: {normalized_point}")
+
+            self.logger.info(f"Selected mask {self.current_mask_index + 1}/{len(self.segmentation_results['masks'])}")
+
+            # Create output message
+            output_message = {
+                "frame": frame,
+                "mask": mask_info,
+                "point": [point["x"], point["y"]],  # Convert to list format
+                "normalized_point": [normalized_point["x"], normalized_point["y"]]  # Convert to list format
+            }
+
+            await self.message_broker.publish("UserInteractionRenderer/segmentation_selection", output_message)
+
+        except Exception as e:
+            self.logger.error(f"Error in handle_segmentation_result_selected: {str(e)}")
+            raise
 
     async def handle_cycle_segmentation_result(self, topic, message):
         self.logger.debug(f"Received cycle segmentation result: {message}")
@@ -172,14 +245,6 @@ class UserInteractionRenderer:
                         await self.message_broker.publish("UserInteractionRenderer/latest_rendered_frame", 
                                                         {'frame': encoded_frame.tobytes()})
                     
-                elif self.processing_mode == ProcessingModes.WAYPOINT_RESULTS.name:
-                    if self.latest_rendered_ocr_frame is not None:
-                        # Encode frame before publishing
-                        _, encoded_frame = cv2.imencode('.jpeg', self.latest_rendered_ocr_frame, 
-                                                      [int(cv2.IMWRITE_JPEG_QUALITY), 70])
-                        
-                        await self.message_broker.publish("UserInteractionRenderer/latest_rendered_frame", 
-                                                        {'frame': encoded_frame.tobytes()})
 
                 await asyncio.sleep(1/self.video_fps)
 
@@ -203,17 +268,117 @@ class UserInteractionRenderer:
             raise ValueError("Invalid fixation frame")
 
     async def process_segmentation_results(self):
-        # TODO: Implement segmentation results processing when available
-        pass
+        """
+        Process segmentation results by drawing masks and points on the frame.
+        Creates a rendered frame for each mask result.
+        """
+        if self.segmentation_results["frame"] is not None:
+            try:
+                # Decode the bytes back into an image
+                np_arr = np.frombuffer(self.segmentation_results["frame"], np.uint8)
+                frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+                
+                # Initialize list to store rendered frames
+                rendered_frames = []
+                
+                masks = self.segmentation_results["masks"]
+                scores = self.segmentation_results["scores"]
+                
+                for mask_idx, (mask, score) in enumerate(zip(masks, scores)):
+                    # Create a copy of the frame for this mask
+                    rendered_frame = frame.copy()
+                    
+                    # Convert mask to proper format and color
+                    mask_colored = np.zeros_like(rendered_frame, dtype=np.uint8)
+                    mask_colored[mask] = [30, 144, 255]  # Light blue color
+                    
+                    # Add transparency to the mask
+                    alpha = 0.6
+                    rendered_frame = cv2.addWeighted(rendered_frame, 1, mask_colored, alpha, 0)
+                    
+                    # Draw mask border
+                    contours, _ = cv2.findContours(mask.astype(np.uint8), 
+                                                cv2.RETR_EXTERNAL, 
+                                                cv2.CHAIN_APPROX_NONE)
+                    cv2.drawContours(rendered_frame, contours, -1, (255, 255, 255), 2)
+                    
+                    # Add score text in top-right corner
+                    score_text = f"Score: {score:.3f}"
+                    text_size = cv2.getTextSize(score_text, cv2.FONT_HERSHEY_SIMPLEX, 1, 2)[0]
+                    text_x = rendered_frame.shape[1] - text_size[0] - 10
+                    text_y = text_size[1] + 10
+                    cv2.putText(rendered_frame, score_text, (text_x, text_y),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+                    
+                    # Add mask number indicator
+                    mask_text = f"Mask {mask_idx + 1}/{len(masks)}"
+                    cv2.putText(rendered_frame, mask_text, (10, 30),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
 
-    async def process_ocr_results(self):
-        # TODO: Implement OCR results processing when available
-        pass
 
+                    # Add  point as a bright red circle on the frame
+                    point = self.segmentation_results["point"]
+                    cv2.circle(rendered_frame, (point["x"], point["y"]), 5, (0, 0, 255), -1)
+                    
+                    rendered_frames.append(rendered_frame)
+                
+                # Store the rendered frames
+                self.latest_rendered_segmentation_frames = rendered_frames
+                
+            except Exception as e:
+                self.logger.error(f"Error processing segmentation results: {str(e)}")
+                raise e
+
+        else:
+            
+            raise ValueError("Invalid segmentation frame")
+
+    async def decode_masks(self, masks_info):
+        masks = []
+        for mask_info in masks_info:
+            mask_bytes = mask_info['data']
+            mask_shape = mask_info['shape']
+            # Unpack the bytes back into uint8 array
+            mask_packed = np.frombuffer(mask_bytes, dtype=np.uint8)
+            mask_unpacked = np.unpackbits(mask_packed)
+            # Reshape and convert to boolean
+            mask = mask_unpacked[:np.prod(mask_shape)].reshape(mask_shape).astype(bool)
+            masks.append(mask)
+
+        # DEBUG print unpacking info
+        self.logger.info(f"Unpacked {len(masks)} masks")
+        self.logger.info(f"First mask shape: {masks[0].shape}")
+
+
+        return masks
+
+    async def encode_mask(self, mask):
+        # Ensure mask is boolean type
+        bool_mask = mask.astype(bool)
+        # Convert to uint8 for packbits
+        uint8_mask = bool_mask.astype(np.uint8)
+        # Pack the bits
+        mask_bytes = np.packbits(uint8_mask).tobytes()
+        mask_shape = bool_mask.shape
+
+        mask_info = {
+            'data': mask_bytes,
+            'shape': mask_shape
+        }
+
+        # DEBUG print packing info
+        self.logger.info(f"Mask shape: {mask_shape}, packed size: {len(mask_bytes)} bytes")
+        # First 10 bytes of the mask
+        self.logger.debug(f"First 10 bytes: {mask_bytes[:10]}")
+
+        return mask_info
+    
     def setup_loading_animation(self):
         """Creates a sequence of rotated loading frames"""
-        # Create base loading frame
-        base_frame = np.zeros((self.output_height, self.output_height, 3), dtype=np.uint8)
+        # Create base loading frame with correct dimensions (height, width)
+        base_frame = np.zeros((self.output_height, self.output_width, 3), dtype=np.uint8)
+        
+        # Calculate center based on frame dimensions
         center = (self.output_width // 2, self.output_height // 2)
         radius = min(self.output_width, self.output_height) // 8
         
@@ -229,11 +394,23 @@ class UserInteractionRenderer:
                 curr_end = curr_angle + 30
                 intensity = 255 - (j * (255 // self.loading_frame_count))
                 cv2.ellipse(frame, center, (radius, radius), 0, curr_angle, curr_end, 
-                           (intensity, intensity, intensity), thickness=3)
+                        (intensity, intensity, intensity), thickness=3)
 
-            # Add text
-            cv2.putText(frame, "Processing", (self.output_width//2 - 100, self.output_height//2 + 50), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+            # Add text centered below the loading circle
+            text = "Processing"
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            font_scale = 1
+            thickness = 2
+            
+            # Get text size
+            (text_width, text_height), baseline = cv2.getTextSize(text, font, font_scale, thickness)
+            
+            # Calculate text position to center it
+            text_x = (self.output_width - text_width) // 2
+            text_y = center[1] + radius + text_height + 20  # 20 pixels below the circle
+            
+            cv2.putText(frame, text, (text_x, text_y), 
+                        font, font_scale, (255, 255, 255), thickness)
 
             self.loading_frames.append(frame)
 
@@ -283,8 +460,12 @@ class VideoRenderer:
 
         self.gaze_lock = asyncio.Lock()
         self.gaze_queue = asyncio.Queue(maxsize=max_queue_size)
+
+         # Add a new attribute to store the latest frame
+        self.latest_frame = None
+        self.latest_frame_lock = asyncio.Lock()
         
-        self.logger = logging.getLogger(__name__)
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     async def start(self):
         self.logger.info("VideoRenderer started")
@@ -305,44 +486,50 @@ class VideoRenderer:
         await self.message_broker.subscribe("ModuleController/processing_mode_update", self.handle_processing_mode_update)
 
     async def handle_selected_topic_latest_frame(self, topic, message):
-        try:
-            if not self.topic_change_event.is_set():
-                compressed_frame = message["frame"]
-                np_arr = np.frombuffer(compressed_frame, np.uint8)
-                latest_frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+            try:
+                if not self.topic_change_event.is_set():
+                    compressed_frame = message["frame"]
+                    np_arr = np.frombuffer(compressed_frame, np.uint8)
+                    frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
 
-                # Non-blocking queue management
-                try:
-                    if self.frame_queue.full():
+                    # Store the latest frame with lock protection
+                    async with self.latest_frame_lock:
+                        self.latest_frame = frame
+
+                    # Also maintain the frame queue for video rendering
+                    try:
+                        if self.frame_queue.full():
+                            try:
+                                self.frame_queue.get_nowait()
+                            except asyncio.QueueEmpty:
+                                pass
+                        self.frame_queue.put_nowait(frame)
+                    except asyncio.QueueFull:
+                        pass
+
+            except Exception as e:
+                self.logger.error(f"Error handling incoming frame: {str(e)}")
+
+    async def handle_topic_update(self, topic, message):
+            self.logger.debug(f"Topic update received: {message}")
+            
+            async with self.frame_lock:
+                self.topic_change_event.set()  # Signal topic change
+                new_topic = message.get("topic", "")
+                
+                if new_topic != self.current_topic:
+                    self.current_topic = new_topic
+                    # Clear existing frames and latest frame
+                    async with self.latest_frame_lock:
+                        self.latest_frame = None
+                    while not self.frame_queue.empty():
                         try:
                             self.frame_queue.get_nowait()
                         except asyncio.QueueEmpty:
-                            pass
-                    self.frame_queue.put_nowait(latest_frame)
-                except asyncio.QueueFull:
-                    pass  # Skip frame if queue is full
-
-        except Exception as e:
-            self.logger.error(f"Error handling incoming frame: {str(e)}")
-
-    async def handle_topic_update(self, topic, message):
-        self.logger.debug(f"Topic update received: {message}")
-        
-        async with self.frame_lock:
-            self.topic_change_event.set()  # Signal topic change
-            new_topic = message.get("topic", "")
-            
-            if new_topic != self.current_topic:
-                self.current_topic = new_topic
-                # Clear existing frames
-                while not self.frame_queue.empty():
-                    try:
-                        self.frame_queue.get_nowait()
-                    except asyncio.QueueEmpty:
-                        break
-                
-                await asyncio.sleep(0.1)  # Small delay for synchronization
-                self.topic_change_event.clear()  # Clear topic change flag
+                            break
+                    
+                    await asyncio.sleep(0.1)  # Small delay for synchronization
+                    self.topic_change_event.clear()  # Clear topic change flag
 
     async def handle_render_apriltags(self, topic, message):
         self.logger.debug(f"Received render_apriltags message: {message}")
@@ -367,6 +554,7 @@ class VideoRenderer:
 
     async def handle_fixation_data(self, topic, message):
         self.logger.debug(f"Received fixation data: {message}")
+
         try:
             # Use non-blocking put for fixation data
             try:
@@ -394,9 +582,6 @@ class VideoRenderer:
                         # Create blank frame if not yet created
                         if blank_frame is None:
                             blank_frame = np.zeros((self.output_height, self.output_width, 3), np.uint8)
-                            cv2.putText(blank_frame, "Nothing to display", 
-                                    (self.output_width//2 - 100, self.output_height//2),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
 
                        # Publish blank frame 
                         frame_to_publish = blank_frame
@@ -445,13 +630,6 @@ class VideoRenderer:
     async def syncronize_fixation_and_frame(self):
         """Synchronize the latest frame with fixation data"""
         try:
-            # Try to get frame non-blocking first
-            try:
-                latest_frame = self.frame_queue.get_nowait()
-            except asyncio.QueueEmpty:
-                self.logger.debug("No frame available for fixation processing")
-                return
-
             # Try to get fixation data non-blocking
             try:
                 latest_fixation = self.fixation_queue.get_nowait()
@@ -459,26 +637,33 @@ class VideoRenderer:
                 self.logger.debug("No fixation data available")
                 return
 
-            if latest_frame is not None and latest_fixation is not None:
+            # Get the latest frame using the lock
+            async with self.latest_frame_lock and self.fixation_lock:
+                if self.latest_frame is None:
+                    self.logger.debug("No frame available for fixation processing")
+                    return
+                frame_to_use = self.latest_frame.copy()
+
+            if latest_fixation is not None:
                 # Convert normalized fixation to pixel coordinates
                 fixation_x, fixation_y = latest_fixation["x"], latest_fixation["y"]
-                point_x, point_y = self.get_pixel_transformation(fixation_x, fixation_y, latest_frame)
+                point_x, point_y = self.get_pixel_transformation(fixation_x, fixation_y, frame_to_use)
                 
-                # Create frame copy for publishing
-                frame_to_publish = latest_frame.copy()
-                
-                # Publish synchronized data
-                self.logger.debug(f"VideoRenderer: Publishing fixation target at ({point_x}, {point_y})")
+                # Add fixation point visualization if needed
+                cv2.circle(frame_to_use, (point_x, point_y), 5, (0, 0, 255), -1)
                 
                 # Encode frame before publishing
-                _, encoded_frame = cv2.imencode('.jpeg', frame_to_publish, 
+                _, encoded_frame = cv2.imencode('.jpeg', frame_to_use, 
                                               [int(cv2.IMWRITE_JPEG_QUALITY), self.image_quality])
                 
+                
+                # Publish the frame with normalized fixation points and converted pixel fixation points
                 await self.message_broker.publish(
                     "VideoRenderer/fixation_target", 
                     {
                         "frame": encoded_frame.tobytes(),
-                        "point": {"x": point_x, "y": point_y}
+                        "point": {"x": point_x, "y": point_y},
+                        "normalized_point": {"x": fixation_x, "y": fixation_y}
                     }
                 )
 
@@ -522,7 +707,7 @@ class ModuleController:
 
         self.latest_fixation_target = None
 
-        self.logger = logging.getLogger(__name__)
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     async def start(self):
 
@@ -533,9 +718,21 @@ class ModuleController:
         await self.message_broker.subscribe("Backend/gaze_enabled_state_update", self.handle_gaze_enabled_state_update)
         await self.message_broker.subscribe("Backend/processing_mode_action", self.handle_processing_mode_action)
 
+        # Segmentation subs
+        await self.message_broker.subscribe("SegmentationMessenger/segmentation_complete", self.handle_segmentation_complete)
+
+        # User render subs
+        await self.message_broker.subscribe("UserInteractionRenderer/segmentation_selection", self.handle_segmentation_result_selected)
+
         # Video render subs
         await self.message_broker.subscribe("VideoRenderer/fixation_target", self.handle_fixation_target)
 
+    async def handle_segmentation_complete(self, topic, message):
+        if message["success"]:
+            await self.message_broker.publish("ModuleController/processing_mode_update", {"mode": ProcessingModes.SEGMENTATION_RESULTS.name})
+
+        else:
+            await self.message_broker.publish("ModuleController/processing_mode_update", {"mode": ProcessingModes.VIDEO_RENDERING.name})
 
     async def handle_selected_video_topic_update(self, topic, message):
         self.logger.debug(f"ModuleController: Received selected video topic update: {message}")
@@ -567,11 +764,35 @@ class ModuleController:
             await self.message_broker.publish("ModuleController/processing_mode_update", {"mode": ProcessingModes.PROCESSING.name})
 
         elif action == ProcessingModeActions.SEGMENT.name:
+            # Send mode update
             await self.message_broker.publish("ModuleController/processing_mode_update", {"mode": ProcessingModes.PROCESSING.name})
 
+            # Send segmentation command
+            """
+            Note message input is like:
+                await self.message_broker.publish(
+                    "VideoRenderer/fixation_target", 
+                    {
+                        "frame": encoded_frame.tobytes(),
+                        "point": {"x": point_x, "y": point_y},
+                        "normalized_point": {"x": fixation_x, "y": fixation_y}
+                    }
+                )
+            """
+            frame = self.latest_fixation_target["frame"]
+            point = self.latest_fixation_target["point"]
+            normalized_point = self.latest_fixation_target["normalized_point"]
+
+            segmentation_message = {"frame": frame, "point": point, "normalized_point": normalized_point}
+
+            # DEBUG
+            self.logger.info(f"Sending segmentation request with point {point} and normalized point {normalized_point}")
+
+            await self.message_broker.publish("ModuleController/segment_frame", segmentation_message)
+
+
         elif action == ProcessingModeActions.ACCEPT.name:
-            # TODO
-            pass
+            await self.message_broker.publish("ModuleController/segmentation_result_selected", {})
 
         elif action == ProcessingModeActions.CYCLE_LEFT.name:
             await self.message_broker.publish("ModuleController/cycle_segmentation_result", {"direction": "left"})
@@ -583,8 +804,6 @@ class ModuleController:
             self.logger.warning(f"Received invalid action command {action}")
 
     async def handle_fixation_target(self, topic, message):
-        self.logger.debug(f"Received fixation target: {message}")
-
         self.latest_fixation_target = message
 
         # Update processing mode to initial fixation
@@ -592,6 +811,12 @@ class ModuleController:
 
         # Pulish data to UserInteractionRenderer
         await self.message_broker.publish("ModuleController/fixation_target", message)
+
+    async def handle_segmentation_result_selected(self, topic, message):
+        self.logger.debug("Segmentation result selected")
+
+        # Go to default video rendering mode
+        await self.message_broker.publish("ModuleController/processing_mode_update", {"mode": ProcessingModes.VIDEO_RENDERING.name})
 
     async def stop(self):
         self.message_broker.stop()
@@ -605,7 +830,7 @@ class ModuleDatapath:
         self.message_broker = message_broker
         self.video_topics = set() 
         self.selected_video_topic = ""
-        self.logger = logging.getLogger(__name__)
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     async def start(self):
         self.logger.info("ModuleDatapath started")
@@ -627,6 +852,10 @@ class ModuleDatapath:
         await self.message_broker.subscribe("ModuleController/selected_video_topic_update", self.handle_selected_video_topic_update)
         asyncio.create_task(self.publish_available_topics())
 
+
+        # Segmentation subs
+        await self.message_broker.subscribe("SegmentationMessenger/segmentation_result", self.handle_segmentation_results)
+
     async def publish_available_topics(self):
         while True:
             await self.message_broker.publish("ModuleDatapath/available_video_topics", {"topics": list(self.video_topics)})
@@ -646,6 +875,17 @@ class ModuleDatapath:
 
         except Exception as e:
             self.logger.error(f"Error handling incoming stream: {str(e)}")
+
+    async def handle_segmentation_results(self, topic, message):
+        """
+        Handle incoming segmentation results
+        """
+        try:
+            await self.message_broker.publish("ModuleDatapath/segmentation_results", message)
+
+        except Exception as e:
+            self.logger.error(f"Error handling segmentation results: {str(e)}")
+            raise e
 
     async def handle_selected_video_topic_update(self, topic, message):
         self.logger.debug(f"ModuleDatapath: Received selected video topic update: {message}")

@@ -117,9 +117,7 @@ class Backend:
         await self.message_broker.subscribe("Frontend/video_topic_selected", self.handle_video_topic_selected)
         await self.message_broker.subscribe("Frontend/mission_resume_button_pressed", self.handle_mission_resume_button_pressed)
         await self.message_broker.subscribe("Frontend/teleop_twist_button_pressed", self.handle_teleop_twist_button_pressed)
-
         await self.message_broker.subscribe("Frontend/make_mission_files", self.handle_make_mission_files)
-
         await self.message_broker.subscribe("Frontend/process_action_button_pressed", self.handle_processing_mode_action)
 
         """
@@ -129,6 +127,7 @@ class Backend:
         """
         # UI Renderer subscriptions
         await self.message_broker.subscribe("UserInteractionRenderer/latest_rendered_frame", self.handle_latest_frame)
+        await self.message_broker.subscribe("UserInteractionRenderer/segmentation_selection", self.handle_segmentation_selection)
 
         # Video Renderer subscriptions
         await self.message_broker.subscribe("VideoRender/latest_rendered_frame", self.handle_latest_frame)
@@ -217,7 +216,7 @@ class Backend:
             self.logger.error(f"Mission file creation failed")
 
     async def handle_teleop_twist_button_pressed(self, topic, message):
-        self.logger.info(f"Received teleop twist button pressed: {message}")
+        self.logger.debug(f"Received teleop twist button pressed: {message}")
 
         await self.message_broker.publish("Backend/teleop_twist_command", {"command": message['command']})
 
@@ -260,6 +259,20 @@ class Backend:
         self.mission_state = message['state']
 
         await self.message_broker.publish("Backend/mission_state_update", {"mission_state": self.mission_state})
+
+    async def handle_segmentation_selection(self, topic, message):
+        self.logger.debug("Received segmentation selection")
+        """
+        Incoming message: {"frame", "mask"}
+            frame = self.segmentation_results["frame"]
+            mask = self.segmentation_results["masks"][self.current_mask_index]
+            mask_info = await self.encode_mask(mask)
+        """
+
+        # Handle and pass the message to mission manager
+        await self.message_broker.publish("Backend/segmentation_selection", message)
+
+
 
     async def stop(self):
         self.logger.info("Backend stopping")

@@ -1,0 +1,5 @@
+opencv-python
+msgpack
+zmq
+pillow
+matplotlib

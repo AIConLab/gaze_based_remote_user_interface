@@ -47,56 +47,11 @@ COPY ../app/mission_manager/srv/* ./srv/
 # Copy the msg
 COPY ../app/mission_manager/msg/* ./msg/
 
+COPY ../app/mission_manager/package.xml ./
+COPY ../app/mission_manager/CMakeLists.txt ./
+
 # Create message files
 WORKDIR /root/catkin_ws/src/ugv_mission_pkg
-
-# Create package.xml
-RUN echo '<?xml version="1.0"?>\n\
-<package format="2">\n\
-  <name>ugv_mission_pkg</name>\n\
-  <version>0.0.0</version>\n\
-  <description>Mission package</description>\n\
-  <maintainer email="temp@temp.com">temp</maintainer>\n\
-  <license>BSD</license>\n\
-  <buildtool_depend>catkin</buildtool_depend>\n\
-  <build_depend>message_generation</build_depend>\n\
-  <build_depend>std_msgs</build_depend>\n\
-  <exec_depend>message_runtime</exec_depend>\n\
-  <exec_depend>std_msgs</exec_depend>\n\
-</package>' > package.xml
-
-# Create CMakeLists.txt with proper message handling
-RUN echo 'cmake_minimum_required(VERSION 3.0.2)\n\
-project(ugv_mission_pkg)\n\
-\n\
-find_package(catkin REQUIRED COMPONENTS\n\
-  message_generation\n\
-  std_msgs\n\
-)\n\
-\n\
-add_message_files(\n\
-  FILES\n\
-  GPS.msg\n\
-  MissionWaypoint.msg\n\
-)\n\
-\n\
-add_service_files(\n\
-  FILES\n\
-  mission_commands.srv\n\
-  mission_states.srv\n\
-  mission_file_transfer.srv\n\
-)\n\
-\n\
-generate_messages(\n\
-  DEPENDENCIES\n\
-  std_msgs\n\
-)\n\
-\n\
-catkin_package(\n\
-  CATKIN_DEPENDS\n\
-    message_runtime\n\
-    std_msgs\n\
-)' > CMakeLists.txt
 
 # Build the workspace
 WORKDIR /root/catkin_ws
