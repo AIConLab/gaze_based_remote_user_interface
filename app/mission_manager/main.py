@@ -121,7 +121,7 @@ class RosServiceHandler:
         # Store proxies to avoid recreating them for each call
         self.mission_command_proxy = ServiceProxy('mission_command', mission_commands)
         self.mission_state_proxy = ServiceProxy('mission_state_request', mission_states)
-        self.segmentation_transfer_proxy = ServiceProxy('segmentation_transfer', segmentation_file_transfer)
+        self.segmentation_transfer_proxy = ServiceProxy('/segmentation_file_transfer', segmentation_file_transfer)
 
         self.mission_files_ready_flag = False
         self.mission_name = "mission_creation_test"
@@ -274,46 +274,97 @@ class RosServiceHandler:
         """Handle incoming segmentation data and send to ROS service"""
         try:
             self.logger.info("Handling segmentation selection")
+            self.logger.debug(f"Received message: {message}")
 
-            # Create the compressed image message
+            # Validate message structure
+            required_keys = ["frame", "mask", "point", "normalized_point"]
+            missing_keys = [key for key in required_keys if key not in message]
+            if missing_keys:
+                raise ValueError(f"Missing required keys in message: {missing_keys}")
+
+            # Create request object
+            request = segmentation_file_transfer._request_class()
+
+            # Handle frame data
+            if not message["frame"]:
+                raise ValueError("Frame data is empty")
             compressed_img = CompressedImage()
             compressed_img.format = "jpeg"
-            compressed_img.data = message["frame"]  # Already JPEG compressed bytes
-
-            mask_info = message["mask"]
-
-            request = segmentation_file_transfer._request_class()
+            compressed_img.data = message["frame"]
             request.frame_data = compressed_img
-            request.mask_data = np.array(mask_info['data']).tobytes()  # Convert to bytes
-            request.mask_shape = list(mask_info['shape'])  # Convert tuple to list for ROS
+
+            # Handle mask data
+            mask_info = message["mask"]
+            if not isinstance(mask_info, dict) or 'data' not in mask_info or 'shape' not in mask_info:
+                raise ValueError(f"Invalid mask_info format: {mask_info}")
+            
+            try:
+                request.mask_data = np.array(mask_info['data']).tobytes()
+                request.mask_shape = list(mask_info['shape'])
+            except Exception as e:
+                raise ValueError(f"Failed to process mask data: {str(e)}")
+
+            # Handle point data - Add debug logging
+            point = message["point"]
+            norm_point = message["normalized_point"]
+            
+            self.logger.debug(f"Raw point data: {point}")
+            self.logger.debug(f"Raw normalized point data: {norm_point}")
+
+            # Validate point data
+            if not (isinstance(point, (list, tuple)) and len(point) >= 2):
+                raise ValueError(f"Invalid point format: {point}")
+            if not (isinstance(norm_point, (list, tuple)) and len(norm_point) >= 2):
+                raise ValueError(f"Invalid normalized point format: {norm_point}")
+
+            try:
+                # Point in pixel coordinates
+                request.point_x = int(point[0])
+                request.point_y = int(point[1])
+
+                # Normalized point (0-1)
+                request.normalized_point_x = float(norm_point[0])
+                request.normalized_point_y = float(norm_point[1])
+
+                self.logger.info(
+                    f"Points processed - Pixel: ({request.point_x}, {request.point_y}), "
+                    f"Normalized: ({request.normalized_point_x}, {request.normalized_point_y})"
+                )
+
+            except (IndexError, TypeError, ValueError) as e:
+                raise ValueError(f"Error converting point values: {str(e)}")
+
+            # Log request details before service call
+            self.logger.debug(f"Request frame size: {len(request.frame_data.data)} bytes")
+            self.logger.debug(f"Request mask size: {len(request.mask_data)} bytes")
+            self.logger.debug(f"Request mask shape: {request.mask_shape}")
 
             # Call service
-            loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(
-                None,
-                lambda: self.segmentation_proxy(request)
-            )
-
-            if not response.success:
-                self.logger.error(f"Segmentation transfer failed: {response.message}")
-                await self.message_broker.publish(
-                    "RosServiceHandler/segmentation_transfer_status",
-                    {"success": False, "message": response.message}
+            try:
+                loop = asyncio.get_event_loop()
+                response = await loop.run_in_executor(
+                    None,
+                    lambda: self.segmentation_transfer_proxy(request)
                 )
-            else:
+
+                if not response.success:
+                    raise Exception(f"Service call failed: {response.message}")
+
                 self.logger.info("Segmentation transfer successful")
                 await self.message_broker.publish(
                     "RosServiceHandler/segmentation_transfer_status",
                     {"success": True}
                 )
 
+            except Exception as e:
+                raise Exception(f"Service call error: {str(e)}")
+
         except Exception as e:
-            self.logger.error(f"Error in segmentation selection handler: {str(e)}")
+            self.logger.error(f"Error in segmentation selection handler: {str(e)}", exc_info=True)
             await self.message_broker.publish(
                 "RosServiceHandler/segmentation_transfer_status",
                 {"success": False, "message": str(e)}
             )
-
         
     async def stop(self):
         self.message_broker.stop()

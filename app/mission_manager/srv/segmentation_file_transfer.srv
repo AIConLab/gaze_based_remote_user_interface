@@ -2,6 +2,10 @@
 sensor_msgs/CompressedImage frame_data     # JPEG compressed image
 uint8[] mask_data                         # Packed binary mask data
 int32[] mask_shape                        # Shape of the mask array [height, width]
+uint32 point_x                           # X coordinate of the point in the image
+uint32 point_y                           # Y coordinate of the point in the image
+float32 normalized_point_x               # Normalized X coordinate of the point in the image
+float32 normalized_point_y               # Normalized Y coordinate of the point in the image
 ---
 # Response
 bool success        # Whether the transfer was successful

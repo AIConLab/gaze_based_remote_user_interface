@@ -131,7 +131,7 @@ class SegmentationMessenger:
             self.logger.info(f"Received message on topic {topic}")
 
             image = message["frame"]
-            input_point = message["point"]
+            input_point = message["point"] # This is the transformed point
 
             try:
                 masks, scores, logits = await self.segmentation_model.get_masks(image, input_point)
@@ -149,7 +149,9 @@ class SegmentationMessenger:
                     "frame": image,
                     "masks_info": masks_list,
                     "scores": scores.tolist(),
-                    "logits": logits.tolist()
+                    "logits": logits.tolist(),
+                    "point": input_point,
+                    "normalized_point": message["normalized_point"]
                 }
 
                 self.logger.debug("Publishing segmentation results")

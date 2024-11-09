@@ -64,14 +64,18 @@ class UserInteractionRenderer:
         self.segmentation_results = {"frame" : None,
                                     "masks" : [],
                                     "scores" : [],
-                                    "logits" : []}
+                                    "logits" : [],
+                                    "point" : None,
+                                    "normalized_point" : None}
         self.current_mask_index = 0
         self.latest_rendered_segmentation_frames = None
 
         # Fixation data
         self.fixation_data = {"frame": None,
                               "x": None, 
-                              "y": None}
+                              "y": None,
+                                "norm_x": None,
+                                "norm_y": None}
         self.latest_rendered_fixation_frame = None
 
         # Loading animation setup
@@ -80,7 +84,7 @@ class UserInteractionRenderer:
         self.loading_frame_count = 8  # Number of rotation steps
         self.setup_loading_animation()
 
-        self.logger = logging.getLogger(__name__)
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     async def start(self):
         self.logger.info("UserInteractionRenderer started")
@@ -108,6 +112,11 @@ class UserInteractionRenderer:
         self.fixation_data["frame"] = message.get("frame", None)
         self.fixation_data["x"] = message.get("point", {}).get("x", None)
         self.fixation_data["y"] = message.get("point", {}).get("y", None)
+        self.fixation_data["norm_x"] = message.get("normalized_point", {}).get("x", None)
+        self.fixation_data["norm_y"] = message.get("normalized_point", {}).get("y", None)
+
+        # DEBUG:
+        self.logger.info(f"Received fixation target at ({self.fixation_data['x']}, {self.fixation_data['y']}, {self.fixation_data['norm_x']}, {self.fixation_data['norm_y']})")
 
         await self.process_fixation_frame()
 
@@ -140,6 +149,19 @@ class UserInteractionRenderer:
             self.segmentation_results["scores"] = np.array(message["scores"])
             self.segmentation_results["logits"] = np.array(message["logits"])
 
+            # Store points as dictionaries with x,y keys
+            point = message["point"]
+            normalized_point = message["normalized_point"]
+            
+            # Ensure points are in dict format with x,y keys
+            if isinstance(point, (list, tuple)):
+                point = {"x": point[0], "y": point[1]}
+            if isinstance(normalized_point, (list, tuple)):
+                normalized_point = {"x": normalized_point[0], "y": normalized_point[1]}
+
+            self.segmentation_results["point"] = point
+            self.segmentation_results["normalized_point"] = normalized_point
+
             self.logger.debug(f"Successfully reconstructed {len(masks)} masks")
             await self.process_segmentation_results()
 
@@ -151,13 +173,35 @@ class UserInteractionRenderer:
     async def handle_segmentation_result_selected(self, topic, message):
         self.logger.debug("Segmentation result selected")
 
-        # Publish the selected mask
-        frame = self.segmentation_results["frame"]
-        mask = self.segmentation_results["masks"][self.current_mask_index]
-        mask_info = await self.encode_mask(mask)
+        try:
+            # Get the selected mask
+            frame = self.segmentation_results["frame"]
+            mask = self.segmentation_results["masks"][self.current_mask_index]
+            mask_info = await self.encode_mask(mask)
 
-        await self.message_broker.publish("UserInteractionRenderer/segmentation_selection", 
-                                        {"frame": frame, "mask": mask_info})
+            # Get points - ensure they're in dict format
+            point = self.segmentation_results["point"]
+            normalized_point = self.segmentation_results["normalized_point"]
+
+            # Debug log the point data
+            self.logger.debug(f"Point data being sent: {point}")
+            self.logger.debug(f"Normalized point data being sent: {normalized_point}")
+
+            self.logger.info(f"Selected mask {self.current_mask_index + 1}/{len(self.segmentation_results['masks'])}")
+
+            # Create output message
+            output_message = {
+                "frame": frame,
+                "mask": mask_info,
+                "point": [point["x"], point["y"]],  # Convert to list format
+                "normalized_point": [normalized_point["x"], normalized_point["y"]]  # Convert to list format
+            }
+
+            await self.message_broker.publish("UserInteractionRenderer/segmentation_selection", output_message)
+
+        except Exception as e:
+            self.logger.error(f"Error in handle_segmentation_result_selected: {str(e)}")
+            raise
 
     async def handle_cycle_segmentation_result(self, topic, message):
         self.logger.debug(f"Received cycle segmentation result: {message}")
@@ -270,6 +314,11 @@ class UserInteractionRenderer:
                     mask_text = f"Mask {mask_idx + 1}/{len(masks)}"
                     cv2.putText(rendered_frame, mask_text, (10, 30),
                             cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+
+
+                    # Add  point as a bright red circle on the frame
+                    point = self.segmentation_results["point"]
+                    cv2.circle(rendered_frame, (point["x"], point["y"]), 5, (0, 0, 255), -1)
                     
                     rendered_frames.append(rendered_frame)
                 
@@ -295,6 +344,12 @@ class UserInteractionRenderer:
             # Reshape and convert to boolean
             mask = mask_unpacked[:np.prod(mask_shape)].reshape(mask_shape).astype(bool)
             masks.append(mask)
+
+        # DEBUG print unpacking info
+        self.logger.info(f"Unpacked {len(masks)} masks")
+        self.logger.info(f"First mask shape: {masks[0].shape}")
+
+
         return masks
 
     async def encode_mask(self, mask):
@@ -310,6 +365,11 @@ class UserInteractionRenderer:
             'data': mask_bytes,
             'shape': mask_shape
         }
+
+        # DEBUG print packing info
+        self.logger.info(f"Mask shape: {mask_shape}, packed size: {len(mask_bytes)} bytes")
+        # First 10 bytes of the mask
+        self.logger.debug(f"First 10 bytes: {mask_bytes[:10]}")
 
         return mask_info
     
@@ -405,7 +465,7 @@ class VideoRenderer:
         self.latest_frame = None
         self.latest_frame_lock = asyncio.Lock()
         
-        self.logger = logging.getLogger(__name__)
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     async def start(self):
         self.logger.info("VideoRenderer started")
@@ -578,7 +638,7 @@ class VideoRenderer:
                 return
 
             # Get the latest frame using the lock
-            async with self.latest_frame_lock:
+            async with self.latest_frame_lock and self.fixation_lock:
                 if self.latest_frame is None:
                     self.logger.debug("No frame available for fixation processing")
                     return
@@ -592,18 +652,18 @@ class VideoRenderer:
                 # Add fixation point visualization if needed
                 cv2.circle(frame_to_use, (point_x, point_y), 5, (0, 0, 255), -1)
                 
-                # Log successful synchronization
-                self.logger.debug(f"VideoRenderer: Publishing fixation target at ({point_x}, {point_y})")
-                
                 # Encode frame before publishing
                 _, encoded_frame = cv2.imencode('.jpeg', frame_to_use, 
                                               [int(cv2.IMWRITE_JPEG_QUALITY), self.image_quality])
                 
+                
+                # Publish the frame with normalized fixation points and converted pixel fixation points
                 await self.message_broker.publish(
                     "VideoRenderer/fixation_target", 
                     {
                         "frame": encoded_frame.tobytes(),
-                        "point": {"x": point_x, "y": point_y}
+                        "point": {"x": point_x, "y": point_y},
+                        "normalized_point": {"x": fixation_x, "y": fixation_y}
                     }
                 )
 
@@ -647,7 +707,7 @@ class ModuleController:
 
         self.latest_fixation_target = None
 
-        self.logger = logging.getLogger(__name__)
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     async def start(self):
 
@@ -707,10 +767,29 @@ class ModuleController:
             # Send mode update
             await self.message_broker.publish("ModuleController/processing_mode_update", {"mode": ProcessingModes.PROCESSING.name})
 
-            # Send segmentation command and data
-            await self.message_broker.publish("ModuleController/segment_frame", {"frame": self.latest_fixation_target["frame"], "point": self.latest_fixation_target["point"]})
+            # Send segmentation command
+            """
+            Note message input is like:
+                await self.message_broker.publish(
+                    "VideoRenderer/fixation_target", 
+                    {
+                        "frame": encoded_frame.tobytes(),
+                        "point": {"x": point_x, "y": point_y},
+                        "normalized_point": {"x": fixation_x, "y": fixation_y}
+                    }
+                )
+            """
+            frame = self.latest_fixation_target["frame"]
+            point = self.latest_fixation_target["point"]
+            normalized_point = self.latest_fixation_target["normalized_point"]
 
-            self.logger.debug("Segmentation command sent")
+            segmentation_message = {"frame": frame, "point": point, "normalized_point": normalized_point}
+
+            # DEBUG
+            self.logger.info(f"Sending segmentation request with point {point} and normalized point {normalized_point}")
+
+            await self.message_broker.publish("ModuleController/segment_frame", segmentation_message)
+
 
         elif action == ProcessingModeActions.ACCEPT.name:
             await self.message_broker.publish("ModuleController/segmentation_result_selected", {})
@@ -725,8 +804,6 @@ class ModuleController:
             self.logger.warning(f"Received invalid action command {action}")
 
     async def handle_fixation_target(self, topic, message):
-        self.logger.debug(f"Received fixation target")
-
         self.latest_fixation_target = message
 
         # Update processing mode to initial fixation
@@ -753,7 +830,7 @@ class ModuleDatapath:
         self.message_broker = message_broker
         self.video_topics = set() 
         self.selected_video_topic = ""
-        self.logger = logging.getLogger(__name__)
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     async def start(self):
         self.logger.info("ModuleDatapath started")
