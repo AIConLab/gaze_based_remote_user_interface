@@ -2,6 +2,10 @@
 
 A web-based application for remote robot control using gaze-based interaction for autonomous inspection missions.
 
+<div align="center">
+  <img src="media/ui.png" alt="User Interface" width="800" style="border: 1px solid #ddd; border-radius: 8px; margin: 20px 0;">
+</div>
+
 ## System Overview
 
 This application enables operators to:
@@ -115,27 +119,30 @@ You can now start the application and proceed with the mission setup.
 
 ### Troubleshooting
 
-1. If robot shows "Disconnected":
-   - Check network configuration
-   - Verify robot IP and hostname
-   - Ensure robot is powered on and network accessible
+If robot shows "Disconnected":
+  - Check network configuration
+  - Verify robot IP and hostname
+  - Ensure robot is powered on and network accessible
 
-2. If gaze tracking is inaccurate:
-   - Recalibrate Pupil Labs hardware
-   - Check lighting conditions
-   - Ensure proper distance from screen
+If gaze tracking is inaccurate:
+  - Recalibrate Pupil Labs hardware
+  - Check lighting conditions
+  - Ensure proper distance from screen
 
-3. If segmentation fails:
-   - Try adjusting fixation point
-   - Ensure clear view of target
-   - Check for adequate lighting and contrast
+If segmentation fails:
+  - Try adjusting fixation point
+  - Ensure clear view of target
+  - Check for adequate lighting and contrast
 
-4. If mission doesn't start:
-   - Verify mission files are properly processed
-   - Check robot state is ready for mission
-   - Ensure no existing mission is in progress
+If mission doesn't start:
+  - Verify mission files are properly processed
+  - Check robot state is ready for mission
+  - Ensure no existing mission is in progress
 
-## Support
+To save images and data from the inspection process you may need to change the ownership of the files. You can do this by running the following command from the projects root directory:
+```
+sudo chown -R $(whoami):$(whoami) .
+``` 
 
 For additional troubleshooting or support:
 - Check the application logs in the `logs` directory
