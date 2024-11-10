@@ -2,6 +2,7 @@ version: '3.8'
 
 services:
   zmq_proxy:
+    user: "${UID:-1000}:${GID:-1000}"
     build:
       context: .
       dockerfile: Dockerfile.ml_cv_python3_8
@@ -15,6 +16,8 @@ services:
       - app_network
 
   web_host:
+
+    user: "${UID:-1000}:${GID:-1000}"
     build:
       context: .
       dockerfile: Dockerfile.web_host_python3_8
@@ -55,6 +58,7 @@ services:
     command: "python3 main.py" # --enable-logging"
 
   pupil_module:
+
     build:
       context: .
       dockerfile: Dockerfile.pupil_dev
@@ -117,6 +121,8 @@ services:
     command: "python3 main.py" #--enable-logging"
 
   visualizer:
+
+    user: "${UID:-1000}:${GID:-1000}"
     build:
       context: ..
       dockerfile: .docker/Dockerfile.visualizer
