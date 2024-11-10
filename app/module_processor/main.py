@@ -740,6 +740,7 @@ class VideoRenderer:
                 if current_time - ts < self.gaze_fade_duration
             ]
             self.last_gaze_cleanup = current_time
+
     def frame_reshape(self, frame):
         h, w = frame.shape[:2]
         aspect = w/h
@@ -1052,14 +1053,14 @@ async def main(enable_logging):
         logger.info("Module Processor starting")
 
         ui_renderer_message_broker = MessageBroker(1024)
-        video_renderer_message_broker = MessageBroker(1024)
+        video_renderer_message_broker = MessageBroker(1024*4)
         module_controller_message_broker = MessageBroker(1024)
         module_datapath_message_broker = MessageBroker(1024*4)
         webcam_module_message_broker = MessageBroker(1024)
 
         ui_renderer = UserInteractionRenderer(message_broker=ui_renderer_message_broker)
 
-        video_renderer = VideoRenderer(video_fps=30, 
+        video_renderer = VideoRenderer(video_fps=15, 
                                 message_broker=video_renderer_message_broker,
                                 output_width=1280, 
                                 output_height=720,
@@ -1096,7 +1097,6 @@ async def main(enable_logging):
         module_controller.stop()
         module_datapath.stop()
 
-    
 
 if __name__ == "__main__":
     import argparse

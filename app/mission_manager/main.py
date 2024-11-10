@@ -783,7 +783,7 @@ class MissionFileHandler:
     async def process_pending_missions(self):
         """Check for and process any pending mission files"""
         try:
-            kmz_path = self.input_path / "mission.kmz"
+            kmz_path = self.input_path.glob("*.kmz")
             if kmz_path.exists():
                 self.logger.info("Found mission.kmz file, processing...")
                 
