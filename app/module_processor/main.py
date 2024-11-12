@@ -424,7 +424,8 @@ class VideoRenderer:
                   output_height=720, 
                   max_queue_size=5,
                   gaze_trail_length=30,
-                  message_broker: MessageBroker = None
+                  message_broker: MessageBroker = None,
+                  image_quality=70
                   ):
         # Init classes
         self.message_broker = message_broker
@@ -441,7 +442,7 @@ class VideoRenderer:
         self.processing_mode = None
 
         # Video rendering parameters
-        self.image_quality = 70
+        self.image_quality = image_quality
         self.video_fps = video_fps
         self.output_width = output_width
         self.output_height = output_height
@@ -449,6 +450,12 @@ class VideoRenderer:
         # Frame synchronization
         self.frame_lock = asyncio.Lock()
         self.frame_queue = asyncio.Queue(maxsize=max_queue_size)
+
+         # Add last valid frame cache
+        self.last_valid_frame = None
+        self.last_valid_frame_lock = asyncio.Lock()
+        self.frame_timeout = 2.0  # Time in seconds before considering connection lost
+        self.last_frame_time = 0
 
         # Topic change event
         self.topic_change_event = asyncio.Event()
@@ -497,29 +504,34 @@ class VideoRenderer:
         await self.message_broker.subscribe("ModuleController/processing_mode_update", self.handle_processing_mode_update)
 
     async def handle_selected_topic_latest_frame(self, topic, message):
-            try:
-                if not self.topic_change_event.is_set():
-                    compressed_frame = message["frame"]
-                    np_arr = np.frombuffer(compressed_frame, np.uint8)
-                    frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+        try:
+            if not self.topic_change_event.is_set():
+                compressed_frame = message["frame"]
+                np_arr = np.frombuffer(compressed_frame, np.uint8)
+                frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
 
-                    # Store the latest frame with lock protection
-                    async with self.latest_frame_lock:
-                        self.latest_frame = frame
+                # Update last valid frame and timestamp
+                async with self.last_valid_frame_lock:
+                    self.last_valid_frame = frame
+                    self.last_frame_time = time.time()
 
-                    # Also maintain the frame queue for video rendering
-                    try:
-                        if self.frame_queue.full():
-                            try:
-                                self.frame_queue.get_nowait()
-                            except asyncio.QueueEmpty:
-                                pass
-                        self.frame_queue.put_nowait(frame)
-                    except asyncio.QueueFull:
-                        pass
+                # Store the latest frame with lock protection
+                async with self.latest_frame_lock:
+                    self.latest_frame = frame
 
-            except Exception as e:
-                self.logger.error(f"Error handling incoming frame: {str(e)}")
+                # Maintain frame queue
+                try:
+                    if self.frame_queue.full():
+                        try:
+                            self.frame_queue.get_nowait()
+                        except asyncio.QueueEmpty:
+                            pass
+                    self.frame_queue.put_nowait(frame)
+                except asyncio.QueueFull:
+                    pass
+
+        except Exception as e:
+            self.logger.error(f"Error handling incoming frame: {str(e)}")
 
     async def handle_topic_update(self, topic, message):
             self.logger.debug(f"Topic update received: {message}")
@@ -606,32 +618,34 @@ class VideoRenderer:
             self.logger.error(f"Error handling fixation data: {str(e)}")
 
     async def publish_latest_frame(self):
-        """Publishes frames to the message broker"""
-        blank_frame = None
+        """Publishes frames to the message broker with frame caching"""
         try:
             while True:
                 if self.processing_mode == ProcessingModes.VIDEO_RENDERING.name:
-                    if self.topic_change_event.is_set() or self.frame_queue.empty():
-                        # Create blank frame if not yet created
-                        if blank_frame is None:
-                            blank_frame = np.zeros((self.output_height, self.output_width, 3), np.uint8)
+                    current_time = time.time()
+                    frame_to_publish = None
+                    
+                    # Check if we have a recent valid frame
+                    async with self.last_valid_frame_lock:
+                        if (self.last_valid_frame is not None and 
+                            current_time - self.last_frame_time < self.frame_timeout):
+                            frame_to_publish = self.last_valid_frame.copy()
+                            
+                            # Add "Delayed Feed" indicator if frame is old
+                            if current_time - self.last_frame_time > 0.5:  # Add warning after 500ms
+                                cv2.putText(frame_to_publish, "Delayed Feed", 
+                                          (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 
+                                          1, (0, 0, 255), 2)
 
-                       # Publish blank frame 
-                        frame_to_publish = blank_frame
-                        status = "blank"
-
-                    # Publish latest frame
-                    else:
-                        try:
-                            frame_to_publish = self.frame_queue.get_nowait()
-                            status = "latest"
-                        except asyncio.QueueEmpty:
-                            frame_to_publish = blank_frame
-                            status = "blank"
+                    # If no valid cached frame, show blank frame
+                    if frame_to_publish is None:
+                        frame_to_publish = np.zeros((self.output_height, self.output_width, 3), np.uint8)
+                        cv2.putText(frame_to_publish, "No Signal", 
+                                  (self.output_width//2 - 100, self.output_height//2),
+                                  cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
 
                     # Process frame with AprilTags if enabled
-                    if status == "latest":
-                        frame_to_publish = await self.process_frame(frame_to_publish)
+                    frame_to_publish = await self.process_frame(frame_to_publish)
 
                     # Encode frame
                     _, encoded_out = cv2.imencode('.jpeg', frame_to_publish, 
@@ -641,6 +655,11 @@ class VideoRenderer:
                                                     {'frame': encoded_out.tobytes()})
 
                 await asyncio.sleep(1/self.video_fps)
+
+        except Exception as e:
+            self.logger.error(f"Error in publish_latest_frame: {str(e)}")
+            raise e
+
 
 
         except Exception as e:
@@ -1064,7 +1083,8 @@ async def main(enable_logging):
                                 message_broker=video_renderer_message_broker,
                                 output_width=1280, 
                                 output_height=720,
-                                gaze_trail_length=30)
+                                gaze_trail_length=30,
+                                image_quality=50)
 
         module_controller = ModuleController(message_broker=module_controller_message_broker)
 
