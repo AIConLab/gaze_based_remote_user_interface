@@ -1,0 +1,83 @@
+lab@ubuntu20-lambda:~/Mohsen/vilg/Vision-Language-Grasping-master$ python scripts/test.py --load_model --model_path ~/Mohsen/vilg/Vision-Language-Grasping-master/trained_model.pth 
+pybullet build time: Sep 22 2024 15:19:44
+WARNING - 2024-10-28 02:29:45,607 - rigid_transformations - Failed to import ros dependencies in rigid_transforms.py
+WARNING - 2024-10-28 02:29:45,607 - rigid_transformations - autolab_core not installed as catkin package, RigidTransform ros methods will be unavailable
+startThreads creating 1 threads.
+starting thread 0
+started thread 0 
+argc=2
+argv[0] = --unused
+argv[1] = --start_demo_name=Physics Server
+ExampleBrowserThreadFunc started
+X11 functions dynamically loaded using dlopen/dlsym OK!
+X11 functions dynamically loaded using dlopen/dlsym OK!
+Creating context
+Created GL 3.3 context
+Direct GLX rendering context obtained
+Making context current
+GL_VENDOR=NVIDIA Corporation
+GL_RENDERER=NVIDIA GeForce RTX 3090/PCIe/SSE2
+GL_VERSION=3.3.0 NVIDIA 550.54.15
+GL_SHADING_LANGUAGE_VERSION=3.30 NVIDIA via Cg compiler
+pthread_getconcurrency()=0
+Version = 3.3.0 NVIDIA 550.54.15
+Vendor = NVIDIA Corporation
+Renderer = NVIDIA GeForce RTX 3090/PCIe/SSE2
+b3Printf: Selected demo: Physics Server
+startThreads creating 1 threads.
+starting thread 0
+started thread 0 
+MotionThreadFunc thread started
+Creating data logging session: /home/lab/Mohsen/vilg/Vision-Language-Grasping-master/logs/2024-10-28-02-29-46-test
+ven = NVIDIA Corporation
+/home/lab/anaconda3/envs/vilg/lib/python3.8/site-packages/torch-1.7.1-py3.8-linux-x86_64.egg/torch/cuda/__init__.py:104: UserWarning: 
+NVIDIA GeForce RTX 3090 with CUDA capability sm_86 is not compatible with the current PyTorch installation.
+The current PyTorch install supports CUDA capabilities sm_37 sm_50 sm_60 sm_70 sm_75.
+If you want to use the NVIDIA GeForce RTX 3090 GPU with PyTorch, please check the instructions at https://pytorch.org/get-started/locally/
+
+  warnings.warn(incompatible_device_warn.format(device_name, capability, " ".join(arch_list), device_name))
+ven = NVIDIA Corporation
+Traceback (most recent call last):
+  File "scripts/test.py", line 67, in <module>
+    graspnet = Graspnet()
+  File "/home/lab/Mohsen/vilg/Vision-Language-Grasping-master/scripts/grasp_detetor.py", line 15, in __init__
+    self.graspnet_baseline = GraspNetBaseLine(checkpoint_path = self.config['graspnet_checkpoint_path'])
+  File "/home/lab/Mohsen/vilg/Vision-Language-Grasping-master/models/graspnet/graspnet_baseline.py", line 30, in __init__
+    self.net = self.get_net()
+  File "/home/lab/Mohsen/vilg/Vision-Language-Grasping-master/models/graspnet/graspnet_baseline.py", line 37, in get_net
+    net.to(device)
+  File "/home/lab/anaconda3/envs/vilg/lib/python3.8/site-packages/torch-1.7.1-py3.8-linux-x86_64.egg/torch/nn/modules/module.py", line 612, in to
+    return self._apply(convert)
+  File "/home/lab/anaconda3/envs/vilg/lib/python3.8/site-packages/torch-1.7.1-py3.8-linux-x86_64.egg/torch/nn/modules/module.py", line 359, in _apply
+    module._apply(fn)
+  File "/home/lab/anaconda3/envs/vilg/lib/python3.8/site-packages/torch-1.7.1-py3.8-linux-x86_64.egg/torch/nn/modules/module.py", line 359, in _apply
+    module._apply(fn)
+  File "/home/lab/anaconda3/envs/vilg/lib/python3.8/site-packages/torch-1.7.1-py3.8-linux-x86_64.egg/torch/nn/modules/module.py", line 359, in _apply
+    module._apply(fn)
+  [Previous line repeated 3 more times]
+  File "/home/lab/anaconda3/envs/vilg/lib/python3.8/site-packages/torch-1.7.1-py3.8-linux-x86_64.egg/torch/nn/modules/module.py", line 381, in _apply
+    param_applied = fn(param)
+  File "/home/lab/anaconda3/envs/vilg/lib/python3.8/site-packages/torch-1.7.1-py3.8-linux-x86_64.egg/torch/nn/modules/module.py", line 610, in convert
+    return t.to(device, dtype if t.is_floating_point() else None, non_blocking)
+RuntimeError: CUDA error: out of memory
+Exception ignored in: <function Environment.__del__ at 0x7fa89eb62ee0>
+Traceback (most recent call last):
+  File "/home/lab/Mohsen/vilg/Vision-Language-Grasping-master/env/environment_sim.py", line 425, in __del__
+TypeError: 'NoneType' object is not callable
+numActiveThreads = 0
+stopping threads
+Thread with taskId 0 exiting
+Thread TERMINATED
+destroy semaphore
+semaphore destroyed
+destroy main semaphore
+main semaphore destroyed
+finished
+numActiveThreads = 0
+btShutDownExampleBrowser stopping threads
+Thread with taskId 0 exiting
+Thread TERMINATED
+destroy semaphore
+semaphore destroyed
+destroy main semaphore
+main semaphore destroyed
