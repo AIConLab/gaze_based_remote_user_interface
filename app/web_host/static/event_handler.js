@@ -1,4 +1,5 @@
 document.addEventListener('DOMContentLoaded', function() {
+    let intervalId = null; // Global variable to hold the interval ID
     // Configuration and state
     const config = {
         processActionButtons: {
@@ -133,17 +134,34 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         },
 
+        
+
         handleButtonPress(buttonId, isPressed) {
             if (!state.teleopEnabled) return;
-        
-            const command = isPressed ? 'pressed' : 'release';
-        
-            fetch('/button_press', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: `teleop_button_${command}=${encodeURIComponent(buttonId)}`
-            });
+
+            if (isPressed) {
+                // Start sending the command continuously every 100ms while the button is pressed
+                intervalId = setInterval(() => {
+                    fetch('/button_press', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: `teleop_button_pressed=${encodeURIComponent(buttonId)}`
+                    });
+                }, 100); // Adjust the interval as needed (e.g., 100ms)
+            } else {
+                // Stop sending the command when the button is released
+                clearInterval(intervalId);
+                intervalId = null;
+
+                // Optionally, send a "release" message if needed
+                fetch('/button_press', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `teleop_button_release=${encodeURIComponent(buttonId)}`
+                });
+            }
         }
+
     };
 
     // Mission control handling
@@ -240,6 +258,7 @@ document.addEventListener('DOMContentLoaded', function() {
         document.querySelectorAll('.teleop-btn').forEach(button => {
             button.addEventListener('mousedown', () => teleopHandler.handleButtonPress(button.id, true));
             button.addEventListener('mouseup', () => teleopHandler.handleButtonPress(button.id, false));
+            button.addEventListener('mouseleave', () => teleopHandler.handleButtonPress(button.id, false)); // Stop when cursor leaves button
         });
 
         // Mission button listeners
