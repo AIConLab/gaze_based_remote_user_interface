@@ -136,7 +136,7 @@ document.addEventListener('DOMContentLoaded', function() {
         handleButtonPress(buttonId, isPressed) {
             if (!state.teleopEnabled) return;
         
-            const command = isPressed ? 'press' : 'release';
+            const command = isPressed ? 'pressed' : 'release';
         
             fetch('/button_press', {
                 method: 'POST',
@@ -144,7 +144,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 body: `teleop_button_${command}=${encodeURIComponent(buttonId)}`
             });
         }
-        
     };
 
     // Mission control handling
@@ -242,7 +241,6 @@ document.addEventListener('DOMContentLoaded', function() {
             button.addEventListener('mousedown', () => teleopHandler.handleButtonPress(button.id, true));
             button.addEventListener('mouseup', () => teleopHandler.handleButtonPress(button.id, false));
         });
-        
 
         // Mission button listeners
         elements.missionStart.addEventListener('click', () => missionHandler.handleButton('start'));

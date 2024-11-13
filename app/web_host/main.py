@@ -447,6 +447,24 @@ class Frontend:
                 command = teleop_commands.get(button_id, [0, 0, 0, 0])  # Default to stop if unknown button
                 await self.publish_message("Frontend/teleop_twist_button_pressed", {'command': command})
 
+            elif "teleop_button_release" in form:
+                # Dont need to move
+                button_id = form.get("teleop_button_pressed")
+                teleop_commands = {
+                    'teleop-forward': [0, 0, 0, 0],      # Forward
+                    'teleop-forward-right': [0, 0, 0, 0],  # Forward-Right
+                    'teleop-right': [0, 0, 0, 0],       # Right
+                    'teleop-back-right': [0, 0, 0, 0], # Back-Right
+                    'teleop-back': [0, 0, 0, 0],        # Back
+                    'teleop-back-left': [0, 0, 0, 0],   # Back-Left
+                    'teleop-left': [0, 0, 0, 0],         # Left
+                    'teleop-forward-left': [0, 0, 0, 0], # Forward-Left
+                    'teleop-stop': [0, 0, 0, 0],         # Stop
+                }
+                
+                command = teleop_commands.get(button_id, [0, 0, 0, 0])  # Default to stop if unknown button
+                await self.publish_message("Frontend/teleop_twist_button_pressed", {'command': command})
+
             elif "make_mission_files_button_pressed" in form:
                 await self.publish_message("Frontend/make_mission_files", {'type': 'make_mission_files'})
 
