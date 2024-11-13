@@ -1,3 +1,8 @@
+# Python bytecode
+**/*.pyc
+**/__pycache__/
+
+# Existing ignored paths
 app/**/__pycache__/
 app/**/logs/
 .env
