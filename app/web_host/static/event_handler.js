@@ -34,6 +34,7 @@ document.addEventListener('DOMContentLoaded', function() {
         missionPause: document.getElementById('mission-pause'),
         missionResume: document.getElementById('mission-resume'),
         missionAbort: document.getElementById('mission-abort'),
+        endInspection: document.getElementById('end-inspection'),
         
         // State elements
         connectionStatus: document.getElementById('connection-status'),
@@ -170,7 +171,7 @@ document.addEventListener('DOMContentLoaded', function() {
             fetch('/button_press', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: `mission_${action}_button_pressed=true`
+                body: `mission_command_button_pressed=${action}`
             });
         }
     };
@@ -266,6 +267,7 @@ document.addEventListener('DOMContentLoaded', function() {
         elements.missionPause.addEventListener('click', () => missionHandler.handleButton('pause'));
         elements.missionResume.addEventListener('click', () => missionHandler.handleButton('resume'));
         elements.missionAbort.addEventListener('click', () => missionHandler.handleButton('abort'));
+        elements.endInspection.addEventListener('click', () => missionHandler.handleButton('end_inspection'));
 
         // Make mission files button
         elements.makeMissionFilesButton.addEventListener('click', () => makeMissionFilesHandler.handleButton());
