@@ -5,15 +5,14 @@ class MissionStates(Enum):
     IDLE = 0
     ERROR = 1
     PAUSED = 2
+
     LOADING_WAYPOINTS = 3
     NAVIGATING_TO_WAYPOINT = 4
-    SCANNING_SCENE = 5
-    SCANNED_SCENE = 6
-    APPROACHING_TARGET = 7
-    AWAITING_GAZE_TARGET_INPUT = 8
-    INSPECTING = 9
-    INSPECTION_COMPLETE = 10
-    MISSION_COMPLETE = 11
+
+    INSPECTING = 5
+    AWAITING_INSPECTION_TARGET = 6
+
+    MISSION_COMPLETE = 7
 
 
 @unique
@@ -22,6 +21,7 @@ class MissionCommandSignals(Enum):
     MISSION_PAUSE = 1
     MISSION_ABORT = 2
     MISSION_RESUME = 3
+    END_INSPECTION = 4
 
 @unique
 class ProcessingModes(Enum):

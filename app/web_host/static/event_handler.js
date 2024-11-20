@@ -1,4 +1,5 @@
 document.addEventListener('DOMContentLoaded', function() {
+    let intervalId = null; // Global variable to hold the interval ID
     // Configuration and state
     const config = {
         processActionButtons: {
@@ -33,6 +34,7 @@ document.addEventListener('DOMContentLoaded', function() {
         missionPause: document.getElementById('mission-pause'),
         missionResume: document.getElementById('mission-resume'),
         missionAbort: document.getElementById('mission-abort'),
+        endInspection: document.getElementById('end-inspection'),
         
         // State elements
         connectionStatus: document.getElementById('connection-status'),
@@ -133,14 +135,34 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         },
 
-        handleButtonPress(buttonId) {
+        
+
+        handleButtonPress(buttonId, isPressed) {
             if (!state.teleopEnabled) return;
-            fetch('/button_press', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: `teleop_button_pressed=${encodeURIComponent(buttonId)}`
-            });
+
+            if (isPressed) {
+                // Start sending the command continuously every 100ms while the button is pressed
+                intervalId = setInterval(() => {
+                    fetch('/button_press', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: `teleop_button_pressed=${encodeURIComponent(buttonId)}`
+                    });
+                }, 100); // Adjust the interval as needed (e.g., 100ms)
+            } else {
+                // Stop sending the command when the button is released
+                clearInterval(intervalId);
+                intervalId = null;
+
+                // Optionally, send a "release" message if needed
+                fetch('/button_press', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `teleop_button_release=${encodeURIComponent(buttonId)}`
+                });
+            }
         }
+
     };
 
     // Mission control handling
@@ -149,7 +171,7 @@ document.addEventListener('DOMContentLoaded', function() {
             fetch('/button_press', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: `mission_${action}_button_pressed=true`
+                body: `mission_command_button_pressed=${action}`
             });
         }
     };
@@ -235,7 +257,9 @@ document.addEventListener('DOMContentLoaded', function() {
         // Teleop listeners
         elements.teleopToggle.addEventListener('click', () => teleopHandler.toggleTeleop());
         document.querySelectorAll('.teleop-btn').forEach(button => {
-            button.addEventListener('click', () => teleopHandler.handleButtonPress(button.id));
+            button.addEventListener('mousedown', () => teleopHandler.handleButtonPress(button.id, true));
+            button.addEventListener('mouseup', () => teleopHandler.handleButtonPress(button.id, false));
+            button.addEventListener('mouseleave', () => teleopHandler.handleButtonPress(button.id, false)); // Stop when cursor leaves button
         });
 
         // Mission button listeners
@@ -243,6 +267,7 @@ document.addEventListener('DOMContentLoaded', function() {
         elements.missionPause.addEventListener('click', () => missionHandler.handleButton('pause'));
         elements.missionResume.addEventListener('click', () => missionHandler.handleButton('resume'));
         elements.missionAbort.addEventListener('click', () => missionHandler.handleButton('abort'));
+        elements.endInspection.addEventListener('click', () => missionHandler.handleButton('end_inspection'));
 
         // Make mission files button
         elements.makeMissionFilesButton.addEventListener('click', () => makeMissionFilesHandler.handleButton());

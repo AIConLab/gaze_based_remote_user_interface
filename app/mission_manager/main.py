@@ -495,7 +495,7 @@ class RosSubHandler:
                 self.message_broker.publish("RosSubHandler/mission_state_update", message),
                 self.loop
             )
-            future.result(timeout=1)
+            future.result()
 
         except Exception as e:
             self.logger.error(f"Error in mission state updates handler: {str(e)}")
@@ -734,10 +734,11 @@ class MissionFileHandler:
         self.logger.info(f"Received process mission files request - Topic: {topic}, Message: {message}")
         
         try:
-            await self.process_pending_missions()
+            
+            files_processed_succesfully = await self.process_pending_missions()
 
             await self.message_broker.publish("MissionFileHandler/mission_files_ready", 
-                {"success": True, "mission_data": self.mission_data}
+                {"success": files_processed_succesfully, "mission_data": self.mission_data}
             )
             
         except Exception as e:
@@ -780,15 +781,19 @@ class MissionFileHandler:
                 {"success": False, "mission_data": []}
             )
 
-    async def process_pending_missions(self):
+    async def process_pending_missions(self) -> bool:
         """Check for and process any pending mission files"""
         try:
-            kmz_path = self.input_path / "mission.kmz"
-            if kmz_path.exists():
+            # Get the path of the kmz file with glob
+
+            kmz_files = list(self.input_path.glob("*.kmz"))
+            kmz_file = kmz_files[0] if kmz_files else None
+
+            if kmz_file:
                 self.logger.info("Found mission.kmz file, processing...")
                 
                 # Extract waypoints from KMZ
-                waypoints = await self.extract_waypoints_from_kmz(kmz_path)
+                waypoints = await self.extract_waypoints_from_kmz(kmz_file)
                 
                 # Associate images with waypoints
                 await self.associate_images_with_waypoints(waypoints)
@@ -803,9 +808,15 @@ class MissionFileHandler:
                 await self.prepare_mission_data()
                 
                 self.logger.info("Mission processing complete")
+                return True
+
+            else:
+                self.logger.warning("No mission files found")
+                return False
                 
         except Exception as e:
             self.logger.error(f"Error processing mission files: {str(e)}")
+            return False
             
     async def extract_waypoints_from_kmz(self, kmz_path: Path) -> List[Waypoint]:
         """Extract waypoints from KMZ file"""
@@ -860,6 +871,7 @@ class MissionFileHandler:
         except Exception as e:
             self.logger.error(f"Error extracting waypoints: {str(e)}")
             raise
+
     async def associate_images_with_waypoints(self, waypoints: List[Waypoint]):
         """Associate images from waypoint folders with waypoint objects"""
         self.logger.debug("Associating images with waypoints")

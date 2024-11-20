@@ -117,6 +117,7 @@ class Backend:
         await self.message_broker.subscribe("Frontend/video_topic_selected", self.handle_video_topic_selected)
         await self.message_broker.subscribe("Frontend/mission_resume_button_pressed", self.handle_mission_resume_button_pressed)
         await self.message_broker.subscribe("Frontend/teleop_twist_button_pressed", self.handle_teleop_twist_button_pressed)
+        await self.message_broker.subscribe("Frontend/end_inspection_button_pressed", self.handle_end_inspection_button_pressed)
         await self.message_broker.subscribe("Frontend/make_mission_files", self.handle_make_mission_files)
         await self.message_broker.subscribe("Frontend/process_action_button_pressed", self.handle_processing_mode_action)
 
@@ -127,6 +128,7 @@ class Backend:
         """
         # UI Renderer subscriptions
         await self.message_broker.subscribe("UserInteractionRenderer/latest_rendered_frame", self.handle_latest_frame)
+
         await self.message_broker.subscribe("UserInteractionRenderer/segmentation_selection", self.handle_segmentation_selection)
 
         # Video Renderer subscriptions
@@ -194,6 +196,11 @@ class Backend:
         self.logger.debug("Mission resume button pressed")
 
         await self.message_broker.publish("Backend/mission_command", {"command": MissionCommandSignals.MISSION_RESUME.value})
+
+    async def handle_end_inspection_button_pressed(self, topic, message):
+        self.logger.debug("End inspection button pressed")
+
+        await self.message_broker.publish("Backend/mission_command", {"command": MissionCommandSignals.END_INSPECTION.value})
 
     async def handle_video_topic_selected(self, topic, message):
         self.logger.debug(f"Received video topic selected: {message}")
@@ -400,18 +407,22 @@ class Frontend:
         try:
             if "gaze_button_pressed" in form:
                 await self.publish_message("Frontend/gaze_enabled_button_pressed", {'type': 'gaze_enabled_button_pressed'})
+            
+            elif "mission_command_button_pressed" in form:
+                command = form.get("mission_command_button_pressed")
+                if command == "start":
+                    await self.publish_message("Frontend/mission_start_button_pressed", {'type': 'mission_start_button_pressed'})
+                elif command == "pause":
+                    await self.publish_message("Frontend/mission_pause_button_pressed", {'type': 'mission_pause_button_pressed'})
+                elif command == "abort":
+                    await self.publish_message("Frontend/mission_abort_button_pressed", {'type': 'mission_abort_button_pressed'})
+                elif command == "resume":
+                    await self.publish_message("Frontend/mission_resume_button_pressed", {'type': 'mission_resume_button_pressed'})
+                elif command == "end_inspection":
+                    await self.publish_message("Frontend/end_inspection_button_pressed", {'type': 'end_inspection_button_pressed'})
+                else:
+                    self.logger.warning(f"Unknown mission command: {command}")
 
-            elif "mission_resume_button_pressed" in form:
-                await self.publish_message("Frontend/mission_resume_button_pressed", {'type': 'mission_resume_button_pressed'})
-
-            elif "mission_start_button_pressed" in form:
-                await self.publish_message("Frontend/mission_start_button_pressed", {'type': 'mission_start_button_pressed'})
-
-            elif "mission_pause_button_pressed" in form:
-                await self.publish_message("Frontend/mission_pause_button_pressed", {'type': 'mission_pause_button_pressed'})
-
-            elif "mission_abort_button_pressed" in form:
-                await self.publish_message("Frontend/mission_abort_button_pressed", {'type': 'mission_abort_button_pressed'})
 
             elif "video_topic_selected" in form:
                 selected_topic = form.get("video_topic_selected")
@@ -441,6 +452,24 @@ class Frontend:
                     'teleop-back-left': [-1, 0, 0, 1],   # Back-Left
                     'teleop-left': [0, 0, 0, 1],         # Left
                     'teleop-forward-left': [1, 0, 0, 1], # Forward-Left
+                    'teleop-stop': [0, 0, 0, 0],         # Stop
+                }
+                
+                command = teleop_commands.get(button_id, [0, 0, 0, 0])  # Default to stop if unknown button
+                await self.publish_message("Frontend/teleop_twist_button_pressed", {'command': command})
+
+            elif "teleop_button_release" in form:
+                # Dont need to move
+                button_id = form.get("teleop_button_pressed")
+                teleop_commands = {
+                    'teleop-forward': [0, 0, 0, 0],      # Forward
+                    'teleop-forward-right': [0, 0, 0, 0],  # Forward-Right
+                    'teleop-right': [0, 0, 0, 0],       # Right
+                    'teleop-back-right': [0, 0, 0, 0], # Back-Right
+                    'teleop-back': [0, 0, 0, 0],        # Back
+                    'teleop-back-left': [0, 0, 0, 0],   # Back-Left
+                    'teleop-left': [0, 0, 0, 0],         # Left
+                    'teleop-forward-left': [0, 0, 0, 0], # Forward-Left
                     'teleop-stop': [0, 0, 0, 0],         # Stop
                 }
                 
